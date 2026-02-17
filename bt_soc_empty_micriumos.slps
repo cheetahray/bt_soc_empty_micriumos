@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="ASCII"?>
+<model:MDescriptors xmlns:model="http://www.silabs.com/ss/Studio.ecore">
+  <descriptors name="bt_soc_empty_micriumos">
+    <properties key="projectCommon.sdkId" value="com.silabs.sdk.stack.sisdk:2025.12.1._-1315861870-563987569"/>
+    <properties key="universalConfig.relativeWorkspacePath" value="../bt_soc_empty_micriumos.slcw"/>
+    <properties key="universalConfig.generationDirectory" value=""/>
+    <properties key="universalConfig.toolchainCompatibility" value="iar llvm gcc"/>
+    <properties key="projectCommon.overwriteCopiedSources" value="false"/>
+    <properties key="projectCommon.boardIds" value="brd4194a:0.0.0.A06 brd4002a:0.0.0.A06"/>
+    <properties key="projectCommon.kitId" value=""/>
+    <properties key="projectCommon.partId" value="mcu.arm.efr32.mg27.efr32mg27c140f768im40"/>
+    <properties key="projectCommon.toolchainId" value="com.silabs.ss.framework.project.core.noToolChain:0.0.0"/>
+    <properties key="universalConfig.projectTypeIds" value="visual-studio-code"/>
+    <properties key="projectCommon.importModeId" value="COPY"/>
+    <properties key="universalConfig.compSelProjInstanceId" value="1771341185619"/>
+  </descriptors>
+</model:MDescriptors>

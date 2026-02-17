@@ -1,0 +1,6 @@
+{
+  "sdkRoot" : "/Users/rayshih/.silabs/slt/installs/conan/p/simpl1a11563c2e399/p/",
+  "apackRoot" : "/Users/rayshih/.silabs/slt/installs/conan/p/simpl1a11563c2e399/p/bluetooth_bgbuild",
+  "partOpn" : "efr32mg27c140f768im40",
+  "boards" : "brd4194arevA06,brd4002arevA06"
+}
