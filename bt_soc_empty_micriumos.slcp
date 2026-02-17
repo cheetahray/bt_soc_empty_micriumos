@@ -46,10 +46,19 @@ component:
   id: app_os_helper
 - package: simplicity_sdk
   vendor: silabs
+  id: bluetooth_feature_connection_phy_update
+- package: simplicity_sdk
+  vendor: silabs
   id: bluetooth_feature_connection_role_central
 - package: simplicity_sdk
   vendor: silabs
   id: bluetooth_feature_connection_role_peripheral
+- package: simplicity_sdk
+  vendor: silabs
+  id: bluetooth_feature_extended_advertiser
+- package: simplicity_sdk
+  vendor: silabs
+  id: bluetooth_feature_extended_scanner
 - package: simplicity_sdk
   vendor: silabs
   id: bluetooth_feature_gatt
