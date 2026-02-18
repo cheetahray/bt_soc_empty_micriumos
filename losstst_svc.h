@@ -1,13 +1,13 @@
 /**
- * @file update_adv_port.h
+ * @file losstst_svc.h
  * @brief Portable BLE Advertisement Update Module for Silicon Labs
  * 
  * This module provides portable BLE extended advertising functionality
  * that can be adapted from Nordic nRF52 to Silicon Labs platforms.
  */
 
-#ifndef __UPDATE_ADV_PORT_H__
-#define __UPDATE_ADV_PORT_H__
+#ifndef __losstst_svc_H__
+#define __losstst_svc_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +15,10 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+
+/* Silicon Labs SDK headers */
+#include "sl_status.h"
+#include "sl_bt_api.h"
 
 /* ================== Configuration Constants ================== */
 
@@ -71,11 +75,65 @@ extern "C" {
 #define PARAM_ADV_INT_MIN_3  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MIN_3)
 #define PARAM_ADV_INT_MAX_3  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MAX_3)
 
-#define VALUE_ADV_INT_MIN_8  1000 /* TGAP(adv_slow_interval) */
-#define VALUE_ADV_INT_MAX_8  1200
-#define PARAM_ADV_INT_MIN_8  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MIN_8)
-#define PARAM_ADV_INT_MAX_8  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MAX_8)
+#define VALUE_ADV_INT_MIN_4 200 
+#define VALUE_ADV_INT_MAX_4 300 
+#define PARAM_ADV_INT_MIN_4 (((unsigned int)VALUE_ADV_INT_MIN_4*16)/10)
+#define PARAM_ADV_INT_MAX_4 (((unsigned int)VALUE_ADV_INT_MAX_4*16)/10)
+
+#define VALUE_ADV_INT_MIN_5 300 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
+#define VALUE_ADV_INT_MAX_5 450 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
+#define PARAM_ADV_INT_MIN_5 (((unsigned int)VALUE_ADV_INT_MIN_5*16)/10)
+#define PARAM_ADV_INT_MAX_5 (((unsigned int)VALUE_ADV_INT_MAX_5*16)/10)
+
+#define VALUE_ADV_INT_MIN_6 500 
+#define VALUE_ADV_INT_MAX_6 650 
+#define PARAM_ADV_INT_MIN_6 (((unsigned int)VALUE_ADV_INT_MIN_6*16)/10)
+#define PARAM_ADV_INT_MAX_6 (((unsigned int)VALUE_ADV_INT_MAX_6*16)/10)
+
+#define VALUE_ADV_INT_MIN_7 750 
+#define VALUE_ADV_INT_MAX_7 950 
+#define PARAM_ADV_INT_MIN_7 (((unsigned int)VALUE_ADV_INT_MIN_7*16)/10)
+#define PARAM_ADV_INT_MAX_7 (((unsigned int)VALUE_ADV_INT_MAX_7*16)/10)
+
+#define VALUE_ADV_INT_MIN_8 1000 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
+#define VALUE_ADV_INT_MAX_8 1200 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
+#define PARAM_ADV_INT_MIN_8 (((unsigned int)VALUE_ADV_INT_MIN_8*16)/10)
+#define PARAM_ADV_INT_MAX_8 (((unsigned int)VALUE_ADV_INT_MAX_8*16)/10)
+
+#define VALUE_ADV_INT_MIN_9 2000 
+#define VALUE_ADV_INT_MAX_9 2400 
+#define PARAM_ADV_INT_MIN_9 (((unsigned int)VALUE_ADV_INT_MIN_9*16)/10)
+#define PARAM_ADV_INT_MAX_9 (((unsigned int)VALUE_ADV_INT_MAX_9*16)/10)
+
+#define VALUE_ADV_INT_MIN_10 3000 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
+#define VALUE_ADV_INT_MAX_10 3600 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
+#define PARAM_ADV_INT_MIN_10 (((unsigned int)VALUE_ADV_INT_MIN_10*16)/10)
+#define PARAM_ADV_INT_MAX_10 (((unsigned int)VALUE_ADV_INT_MAX_10*16)/10)
+
+/* ================== Platform Selection ================== */
 #define PLATFORM_SILABS
+
+/* ================== Advertising Options and Flags ================== */
+
+/* Silicon Labs extended advertiser flags */
+#define SL_BT_EXT_ADV_ANONYMOUS         0x1  /* Anonymous advertising */
+#define SL_BT_EXT_ADV_INCLUDE_TX_POWER  0x2  /* Include TX power in adv packets */
+
+/* Advertising options - control advertising behavior via bitmask */
+#define BT_LE_ADV_OPT_NONE              0
+#define BT_LE_ADV_OPT_USE_TX_POWER      (1 << 0)  /* Include TX power in advertising */
+#define BT_LE_ADV_OPT_ANONYMOUS         (1 << 1)  /* Anonymous advertising */
+#define BT_LE_ADV_OPT_EXT_ADV           (1 << 2)  /* Use extended advertising API */
+#define BT_LE_ADV_OPT_NO_2M             (1 << 3)  /* Don't use 2M PHY */
+#define BT_LE_ADV_OPT_CODED             (1 << 4)  /* Use Coded PHY (Long Range) */
+#define BT_LE_ADV_OPT_USE_IDENTITY      (1 << 5)  /* Use identity address */
+#define BT_LE_ADV_OPT_CONNECTABLE       (1 << 6)  /* Connectable advertising */
+
+/* PHY type definitions */
+#define SL_BT_GAP_PHY_1M                0x1
+#define SL_BT_GAP_PHY_2M                0x2
+#define SL_BT_GAP_PHY_CODED             0x4
+
 /* ================== Data Structures ================== */
 
 /**
@@ -127,46 +185,44 @@ typedef struct __attribute__((__packed__)) {
 /* ================== Platform Abstraction Layer ================== */
 
 /**
- * @brief Platform-specific BLE advertising parameter structure
- * This should be adapted to Silicon Labs sl_bt structs
+ * @brief BLE advertising parameter structures for Silicon Labs BG/MG series
  */
-#ifdef PLATFORM_NORDIC
-    /* For Nordic nRF52 */
-    #include <zephyr/bluetooth/bluetooth.h>
-    typedef struct bt_le_adv_param adv_param_t;
-    typedef struct bt_le_ext_adv_start_param adv_start_param_t;
-    typedef struct bt_data adv_data_t;
-    typedef struct bt_le_ext_adv adv_handle_t;
-    
-#elif defined(PLATFORM_SILABS)
-    /* For Silicon Labs BG/MG series */
-    /* TODO: Include appropriate Silicon Labs headers */
-    /* #include "sl_bt_api.h" */
-    
-    typedef struct {
-        uint32_t interval_min;  /* Advertising interval minimum (0.625ms units) */
-        uint32_t interval_max;  /* Advertising interval maximum (0.625ms units) */
-        uint8_t  primary_phy;   /* Primary PHY (1M, Coded) */
-        uint8_t  secondary_phy; /* Secondary PHY (1M, 2M, Coded) */
-        uint16_t options;       /* Advertising options */
-    } adv_param_t;
-    
-    typedef struct {
-        uint16_t timeout;       /* Duration in 10ms units (0=continuous) */
-        uint16_t max_events;    /* Max number of events (0=no limit) */
-    } adv_start_param_t;
-    
-    typedef struct {
-        uint8_t type;          /* AD type (flags, name, manufacturer, etc.) */
-        uint8_t data_len;      /* Data length */
-        const uint8_t *data;   /* Data pointer */
-    } adv_data_t;
-    
-    typedef uint8_t adv_handle_t;  /* Advertising handle (0-based index) */
-    
-#else
-    #error "Platform not defined. Define PLATFORM_NORDIC or PLATFORM_SILABS"
-#endif
+
+/* TODO: Include appropriate Silicon Labs headers */
+/* #include "sl_bt_api.h" */
+
+typedef struct {
+    uint8_t  id;            /* Reserved for compatibility (unused) */
+    uint8_t  sid;           /* Reserved for periodic advertising (unused) */
+    uint8_t  secondary_max_skip; /* Reserved for extended adv optimization (unused) */
+    uint32_t interval_min;  /* Advertising interval minimum (0.625ms units) */
+    uint32_t interval_max;  /* Advertising interval maximum (0.625ms units) */
+    uint8_t  primary_phy;   /* Primary PHY: SL_BT_GAP_PHY_1M or SL_BT_GAP_PHY_CODED */
+    uint8_t  secondary_phy; /* Secondary PHY: SL_BT_GAP_PHY_1M, 2M, or CODED */
+    uint16_t options;       /* ⭐ KEY FIELD - Controls all advertising behavior:
+                             *   BT_LE_ADV_OPT_USE_TX_POWER: Include TX power in adv
+                             *   BT_LE_ADV_OPT_ANONYMOUS: Anonymous advertising
+                             *   BT_LE_ADV_OPT_EXT_ADV: Use extended advertising
+                             *   BT_LE_ADV_OPT_NO_2M: Don't use 2M PHY
+                             *   BT_LE_ADV_OPT_CODED: Use Coded PHY (Long Range)
+                             *   BT_LE_ADV_OPT_USE_IDENTITY: Use identity address
+                             *   BT_LE_ADV_OPT_CONNECTABLE: Connectable advertising
+                             */
+    void    *peer;          /* Reserved for directed advertising (unused) */
+} adv_param_t;
+
+typedef struct {
+    uint16_t timeout;       /* Duration in 10ms units (0=continuous) */
+    uint16_t num_events;    /* Max number of events (0=no limit) */
+} adv_start_param_t;
+
+typedef struct {
+    uint8_t type;          /* AD type (flags, name, manufacturer, etc.) */
+    uint8_t data_len;      /* Data length */
+    const uint8_t *data;   /* Data pointer */
+} adv_data_t;
+
+typedef uint8_t adv_handle_t;  /* Advertising handle (0-based index) */
 
 /* ================== Constants ================== */
 
@@ -176,6 +232,7 @@ typedef struct __attribute__((__packed__)) {
 
 /* BLE AD Types */
 #define BT_DATA_FLAGS              0x01
+#define BT_DATA_TX_POWER           0x0A
 #define BT_DATA_NAME_COMPLETE      0x09
 #define BT_DATA_MANUFACTURER_DATA  0xFF
 
@@ -195,7 +252,7 @@ typedef struct __attribute__((__packed__)) {
  *                       Pass NULL to use platform default
  * @return 0 on success, negative error code on failure
  */
-int update_adv_port_init(const uint8_t *device_address);
+int losstst_svc_init(const uint8_t *device_address);
 
 /**
  * @brief Update BLE extended advertising set
@@ -254,6 +311,43 @@ const char* get_adv_device_name(uint8_t index);
  */
 int set_adv_device_name(uint8_t index, const char *name);
 
+/**
+ * @brief Set TX power for a specific advertising set (Silicon Labs)
+ * 
+ * Use this function to dynamically adjust TX power after advertising set creation.
+ * If BT_LE_ADV_OPT_USE_TX_POWER is set in options, TX power will be included in
+ * advertising packets.
+ * 
+ * @param index Advertising set index
+ * @param power TX power in 0.1 dBm steps (e.g., 10 = 1 dBm, 55 = 5.5 dBm)
+ * @param set_power Pointer to return the actual TX power set
+ * @return 0 on success, negative error code on failure
+ */
+int set_adv_tx_power(uint8_t index, int16_t power, int16_t *set_power);
+
+/**
+ * @brief Get Silicon Labs advertiser flags from Nordic-style options
+ * 
+ * Converts Nordic BT_LE_ADV_OPT_* options to Silicon Labs flags.
+ * Used internally by the platform abstraction layer.
+ * 
+ * @param nordic_options Nordic-style advertising options bitmask
+ * @return Silicon Labs extended advertiser flags
+ */
+uint8_t get_silabs_adv_flags(uint16_t nordic_options);
+
+/**
+ * @brief Get PHY settings from Nordic-style options
+ * 
+ * Extracts primary and secondary PHY from Nordic options like
+ * BT_LE_ADV_OPT_NO_2M and BT_LE_ADV_OPT_CODED.
+ * 
+ * @param nordic_options Nordic-style advertising options bitmask
+ * @param primary_phy Output: primary PHY setting
+ * @param secondary_phy Output: secondary PHY setting
+ */
+void get_phy_from_options(uint16_t nordic_options, uint8_t *primary_phy, uint8_t *secondary_phy);
+
 /* ================== Platform-Specific Callbacks ================== */
 
 /**
@@ -267,8 +361,15 @@ int set_adv_device_name(uint8_t index, const char *name);
  */
 void adv_sent_callback(adv_handle_t *adv_handle, uint16_t num_sent);
 
+/**
+ * @brief Finalize sender (application-specific)
+ * 
+ * Application-defined function for sender finalization.
+ */
+void sender_finit(void);
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __UPDATE_ADV_PORT_H__ */
+#endif /* __losstst_svc_H__ */
