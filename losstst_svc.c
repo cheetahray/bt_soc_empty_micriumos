@@ -313,6 +313,9 @@ static char rcv_msg_str[3][80];
 static int64_t numcst_rssi_rec_tm;
 static rssi_stamp_t numcst_rssi_rec[32];
 static int8_t numcst_rssi[3];
+static int64_t numcst_phy_stamp_tm[4] = {0, 0, 0, 0};
+static uint8_t numcst_src_node[2] = {0, 0};
+static uint16_t numcst_rssi_idx = 0;
 
 static const uint16_t value_interval[][2]={
 	{VALUE_ADV_INT_MIN_0, VALUE_ADV_INT_MAX_0}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1)
@@ -330,6 +333,38 @@ static const uint16_t value_interval[][2]={
 	//,{VALUE_ADV_INT_MIN_n2, VALUE_ADV_INT_MAX_n2}
 	//,{VALUE_ADV_INT_MIN_n3, VALUE_ADV_INT_MAX_n3}
 };
+
+/* Silicon Labs advertisement info structure (equivalent to Nordic's bt_hci_evt_le_ext_advertising_info) */
+typedef struct {
+    int8_t rssi;            /* RSSI value in dBm */
+    uint8_t prim_phy;       /* Primary PHY: 1=1M, 3=Coded */
+    uint8_t sec_phy;        /* Secondary PHY: 0=none(legacy), 1=1M, 2=2M, 3=Coded */
+    uint8_t address_type;   /* Address type */
+    bd_addr address;        /* Bluetooth device address */
+} sl_adv_info_t;
+
+/* Device found parameter structure for parser callbacks */
+typedef struct {
+    uint16_t flw_cnt;
+    union {
+        struct {
+            unsigned step_flag :2;
+            unsigned step_special_stream :3;
+            unsigned step_devnm :2;
+            unsigned :7;
+            unsigned step_fail :1;
+            unsigned step_success :1;
+        };
+        struct {
+            unsigned :14;
+            unsigned step_completed:2;
+        };
+        uint16_t step_raw;
+    };
+    sl_adv_info_t *adv_info_p;  /* Platform-independent advertisement info pointer */
+    const void *temp_ptr;       /* Temporary pointer for data processing (preserves const) */
+} dev_found_param_t;
+
 
 int64_t platform_uptime_get(void) {
     // 使用64位 tick 计数（避免溢出）
@@ -2669,4 +2704,154 @@ int losstst_envmon(void)
     int8_t task_status = losstst_task_tgr(0, envmon_tgr);
     
     return (0 != task_status) ? 1 : 0;
+}
+
+/**
+ * @brief Process received number cast packet
+ * 
+ * Updates the received number cast value and RSSI tracking when a valid
+ * number cast packet is detected.
+ * 
+ * @param idx PHY index (0=2M, 1=1M, 2=Coded, 3=BLE4)
+ * @param form_p Pointer to device info structure (read-only)
+ * @param numcast_p Pointer to number cast value (64-bit, read-only)
+ * @param rssi RSSI value in dBm
+ */
+static void numcast_packet_evt(uint8_t idx, const device_info_t *form_p, const uint64_t *numcast_p, int8_t rssi)
+{
+    if (idx >= 4) {
+        return;
+    }
+    
+    /* Copy number cast value (handle unaligned access) */
+    memcpy(&number_cast_rxval, numcast_p, sizeof(uint64_t));
+    
+    /* Update timestamp (expires after 5 seconds) */
+    int64_t tm_expire = platform_uptime_get() + 5000;
+    numcst_phy_stamp_tm[idx] = tm_expire;
+    
+    /* Extract source node address (last 2 bytes of EUI-64) */
+    /* Copy to avoid taking address of scalar with reverse storage order */
+    uint64_t eui_copy = form_p->eui.eui_64;
+    const uint8_t *eui_ptr = (const uint8_t *)&eui_copy;
+    numcst_src_node[0] = eui_ptr[6];
+    numcst_src_node[1] = eui_ptr[7];
+    
+    /* Record RSSI with expiration timestamp */
+    rssi_stamp_t loc_rec = {
+        .expired_tm = tm_expire,
+        .rssi = rssi
+    };
+    
+    numcst_rssi_rec[(numcst_rssi_idx++) & 31] = loc_rec;
+}
+
+/**
+ * @brief Parse BLE advertising data for number cast packets
+ * 
+ * This parser callback is invoked by bt_data_parse() to process each
+ * advertising data element. It checks for valid number cast format:
+ * - FLAGS element first
+ * - MANUFACTURER_DATA element second with device info
+ * - For extended advertising (1M/2M/Coded): separate MANUFACTURER_DATA with numcast values
+ * - For legacy advertising (BLE4): numcast values embedded in device name tail
+ * 
+ * @param data BLE advertising data element
+ * @param user_data Pointer to dev_found_param_t structure
+ * @return true to continue parsing, false to stop
+ */
+static bool numcast_parser(adv_data_t *data, void *user_data)
+{
+    dev_found_param_t *dev_chr_p = (dev_found_param_t *)user_data;
+    sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
+    
+    /* Check for FLAGS element */
+    if (BT_DATA_FLAGS == data->type) {
+        if (0 == dev_chr_p->step_raw) {
+            dev_chr_p->step_flag++;
+        } else {
+            dev_chr_p->step_fail = 1;
+        }
+    }
+    /* Check for MANUFACTURER_DATA element */
+    else if (1 == dev_chr_p->step_flag && BT_DATA_MANUFACTURER_DATA == data->type) {
+        dev_chr_p->step_special_stream++;
+        
+        /* Sanitize RSSI value */
+        int8_t arg_rssi = adv_info_p->rssi;
+        arg_rssi = (20 < arg_rssi) ? -128 : arg_rssi;
+        
+        /* Determine PHY index from primary and secondary PHY */
+        int8_t idx;
+        if (1 == adv_info_p->prim_phy && 2 == adv_info_p->sec_phy) {
+            idx = 0;  /* 2M PHY */
+        } else if (1 == adv_info_p->prim_phy && 1 == adv_info_p->sec_phy) {
+            idx = 1;  /* 1M PHY */
+        } else if (3 == adv_info_p->prim_phy && 3 == adv_info_p->sec_phy) {
+            idx = 2;  /* Coded PHY S=8 */
+        } else if (1 == adv_info_p->prim_phy && 0 == adv_info_p->sec_phy) {
+            idx = 3;  /* BLE4 (legacy advertising) */
+        } else {
+            dev_chr_p->step_fail = 1;
+            return false;
+        }
+        
+        /* Process BLE4 format (number cast in device name tail) */
+        if (idx == 3) {
+            device_info_bt4_t *rcv_data_p = (device_info_bt4_t *)data->data;
+            
+            /* Validate manufacturer ID, form ID, and UINT16_MAX marker */
+            if (MANUFACTURER_ID == rcv_data_p->device_info.man_id &&
+                LOSS_TEST_FORM_ID == rcv_data_p->device_info.form_id &&
+                UINT16_MAX == *((uint16_t *)rcv_data_p->tail)) {
+                
+                /* Copy to aligned variables to avoid packed struct pointer warnings */
+                device_info_t device_info_copy;
+                uint64_t numcast_value;
+                memcpy(&device_info_copy, &rcv_data_p->device_info, sizeof(device_info_t));
+                memcpy(&numcast_value, rcv_data_p->tail + 2, sizeof(uint64_t));
+                
+                numcast_packet_evt(idx, &device_info_copy, &numcast_value, arg_rssi);
+                dev_chr_p->step_success = 1;
+            } else {
+                dev_chr_p->step_fail = 1;
+            }
+        }
+        /* Process extended advertising format (separate numcast element) */
+        else {
+            if (2 == dev_chr_p->step_special_stream) {
+                /* Second MANUFACTURER_DATA should be numcast values */
+                numcast_info_t *rcv_data_p = (numcast_info_t *)data->data;
+                
+                /* Validate we have device info from previous element */
+                if (NULL != dev_chr_p->temp_ptr &&
+                    0xFF == data->type &&
+                    sizeof(numcast_info_t) == data->data_len) {
+                    
+                    /* Copy to aligned variable to avoid packed struct pointer warning */
+                    uint64_t numcast_value;
+                    memcpy(&numcast_value, rcv_data_p->number_cast_form, sizeof(uint64_t));
+                    numcast_packet_evt(idx, (const device_info_t *)dev_chr_p->temp_ptr,
+                                     &numcast_value, arg_rssi);
+                    dev_chr_p->step_success = 1;
+                } else {
+                    dev_chr_p->step_fail = 1;
+                }
+            } else if (1 == dev_chr_p->step_special_stream) {
+                /* First MANUFACTURER_DATA should be device info */
+                if (data->data_len == sizeof(device_info_t)) {
+                    dev_chr_p->temp_ptr = data->data;
+                } else {
+                    dev_chr_p->step_fail = 1;
+                }
+            } else {
+                dev_chr_p->step_fail = 1;
+            }
+        }
+    } else {
+        dev_chr_p->step_fail = 1;
+    }
+    
+    /* Continue parsing if not completed */
+    return (dev_chr_p->step_completed) ? false : true;
 }
