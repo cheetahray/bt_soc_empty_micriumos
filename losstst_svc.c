@@ -3013,11 +3013,9 @@ static void numcast_packet_evt(uint8_t idx, const device_info_t *form_p, const u
     numcst_phy_stamp_tm[idx] = tm_expire;
     
     /* Extract source node address (last 2 bytes of EUI-64) */
-    /* Copy to avoid taking address of scalar with reverse storage order */
-    uint64_t eui_copy = form_p->eui.eui_64;
-    const uint8_t *eui_ptr = (const uint8_t *)&eui_copy;
-    numcst_src_node[0] = eui_ptr[6];
-    numcst_src_node[1] = eui_ptr[7];
+    /* Use byte-level access to avoid scalar_storage_order byte swap */
+    numcst_src_node[0] = *((const uint8_t *)&form_p->eui + 6);
+    numcst_src_node[1] = *((const uint8_t *)&form_p->eui + 7);
     
     /* Record RSSI with expiration timestamp */
     rssi_stamp_t loc_rec = {
