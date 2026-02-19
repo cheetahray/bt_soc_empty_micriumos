@@ -2842,7 +2842,7 @@ static void numcst_rssi_calc(int64_t tm_stamp)
     int8_t lower = 20;
     int8_t upper = -127;
     
-    for (int idx = 0; idx < 32; idx++) {
+    for (unsigned int idx = 0; idx < ARRAY_SIZE(numcst_rssi_rec); idx++) {
         int64_t rec_tm = numcst_rssi_rec[idx].expired_tm;
         int8_t rec_rssi = numcst_rssi_rec[idx].rssi;
         if (numcst_rssi_rec_tm <= rec_tm) {
