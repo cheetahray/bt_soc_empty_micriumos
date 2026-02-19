@@ -2871,7 +2871,7 @@ int losstst_numcast(void)
     static bool cast_auto = false;
     
     /* Check for abort condition */
-    if(numcast_abort_p) {
+    if(numcast_abort_p()) {
         cast_auto = false;
         number_cast_rxval = UINT64_MAX;
         
