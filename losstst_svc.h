@@ -13,13 +13,6 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
-#include <stdbool.h>
-
-/* Silicon Labs SDK headers */
-#include "sl_status.h"
-#include "sl_bt_api.h"
-
 /* ================== Public Functions ================== */
 
 /**

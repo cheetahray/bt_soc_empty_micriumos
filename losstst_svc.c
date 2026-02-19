@@ -2266,12 +2266,12 @@ int losstst_sender(void)
             /* Start advertising with countdown value */
             for (int idx = 0; idx <= 3; idx++) {
                 if (lc_phy_sel[idx]) {
-                    /* Note: Would need platform-specific parameter selection here */
-                    /* Original: work_adv_param = *non_connectable_adv_param_x[3][idx]; */
+                    /* Use group 3 parameters (1 second interval) for pre-burst */
+                    const adv_param_t *work_adv_param = non_connectable_adv_param_x[3][idx];
                     if (idx == 3) {
                         device_info_bt4_form.device_info = device_info_form[3];
                     }
-                    update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_default_start_param);
+                    update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
                     snd_state_val[idx] = 1;
                 }
             }
@@ -2353,11 +2353,12 @@ int losstst_sender(void)
         /* Start burst advertising (250 events per PHY) */
         for (int idx = 0; idx <= 3; idx++) {
             if (lc_phy_sel[idx]) {
-                /* Note: Would need platform-specific parameter selection here */
+                /* Use configured interval for burst transmission */
+                const adv_param_t *work_adv_param = non_connectable_adv_param_x[round_adv_param_index][idx];
                 if (idx == 3) {
                     device_info_bt4_form.device_info = device_info_form[3];
                 }
-                update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_burst_start_param);
+                update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_burst_start_param);
                 snd_state_val[idx] = 2;
             }
         }
@@ -2418,8 +2419,9 @@ int losstst_sender(void)
                     device_info_bt4_form.device_info = device_info_form[3];
                 }
                 
-                /* Note: Would need platform-specific parameter selection here */
-                update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_default_start_param);
+                /* Use group 3 parameters (1 second interval) for post-burst */
+                const adv_param_t *work_adv_param = non_connectable_adv_param_x[3][idx];
+                update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
                 
                 /* Update transmission counters */
                 switch (idx) {
