@@ -2983,9 +2983,7 @@ int losstst_envmon(void)
     env_rssi_calc();
     
     /* Check if envmon task is still active */
-    int8_t task_status = losstst_task_tgr(0, envmon_tgr);
-    
-    return (0 != task_status) ? 1 : 0;
+    return (0 != envmon_task_tgr(0)) ? 1 : 0;
 }
 
 /**
