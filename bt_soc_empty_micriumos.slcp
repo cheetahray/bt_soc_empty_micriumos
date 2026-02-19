@@ -79,6 +79,9 @@ component:
   id: bluetooth_feature_system
 - package: simplicity_sdk
   vendor: silabs
+  id: bluetooth_hci_iostream_uart
+- package: simplicity_sdk
+  vendor: silabs
   id: bluetooth_stack
 - package: simplicity_sdk
   vendor: silabs

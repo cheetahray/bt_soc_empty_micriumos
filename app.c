@@ -32,6 +32,7 @@
 #include "app_assert.h"
 #include "app.h"
 #include "losstst_svc.h"
+#include <stdio.h>
 
 // The advertising set handle allocated from Bluetooth stack.
 static uint8_t advertising_set_handle = 0xff;
@@ -149,14 +150,22 @@ static void load_parm_cfg(void)
 
 void app_init(void)
 {
-  /* Initialize BLE loss test service */
-    losstst_init();
+    int err;
+    
+    /* Initialize BLE loss test service */
+    err = losstst_init();
+    if (err) {
+        printf("ERROR: losstst_init failed: %d\n", err);
+        /* Continue anyway - some features may still work */
+    }
     
     /* Initialize external peripherals if needed */
     // extscr_init();  // External screen/UART interface
     
     /* Load default parameters */
     load_parm_cfg();
+
+    printf("=== Application Ready ===\n");
 }
 
 // Application Process Action.

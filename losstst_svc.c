@@ -1419,7 +1419,7 @@ int passive_scan_control(int8_t method)
         );
         
         if (status != SL_STATUS_OK) {
-            DEBUG_PRINT("Failed to start scanning: 0x%04X\n", status);
+            printf("Scanning failed (err 0x%04X)\n", status);
             return -EIO;
         }
         
@@ -1547,6 +1547,9 @@ int sender_setup(const test_param_t *param)
     sender_abort_p = param->sender_abort;
     scanner_abort_p = param->scanner_abort;
     numcast_abort_p = param->numcast_abort;
+    
+    /* Print task startup banner */
+    printf("Packet Loss Test (node %03u) **** SND SIDE ****\n", device_address[0]);
     
     /* Generate initial status message */
     sender_peek_msg();
@@ -1761,6 +1764,9 @@ int scanner_setup(const test_param_t *param)
     extern bool scanner_inactive;
     scanner_inactive = true;
     
+    /* Print task startup banner */
+    printf("Packet Loss Test (node %03u) **** RCV SIDE ****\n", device_address[0]);
+    
     /* Generate initial status message */
     scanner_peek_msg();
     
@@ -1939,13 +1945,19 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
                    address.addr[5], address.addr[4], address.addr[3],
                    address.addr[2], address.addr[1], address.addr[0]);
     } else {
-        DEBUG_PRINT("Failed to get identity address: 0x%04X\n", status);
+        printf("Bluetooth init failed (err 0x%04X)\n", status);
         return -EIO;
     }
     
     /* Silicon Labs doesn't need explicit advertising set config check
      * as it's handled dynamically by the stack */
     num_adv_set = MAX_ADV_SETS;
+    
+    /* Validate advertising set configuration */
+    if (num_adv_set < 5) {
+        printf("error CONFIG_BT_EXT_ADV_MAX_ADV_SET < 5\n");
+        return -EINVAL;
+    }
     
     /* ========== Platform-Independent Initialization ========== */
     
@@ -2495,7 +2507,7 @@ int losstst_sender(void)
         /* ========== Phase 4: Check for completion ========== */
         /* Check each PHY for completion */
         if (lc_phy_sel[0] && sub_total_snd_2m >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
+            printf("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
                        pri_phy_typ[1], sec_phy_typ[2]);
             
@@ -2504,7 +2516,7 @@ int losstst_sender(void)
         }
         
         if (lc_phy_sel[1] && sub_total_snd_1m >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
+            printf("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
                        pri_phy_typ[1], sec_phy_typ[1]);
             
@@ -2513,7 +2525,7 @@ int losstst_sender(void)
         }
         
         if (lc_phy_sel[2] && sub_total_snd_s8 >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
+            printf("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
                        pri_phy_typ[3], sec_phy_typ[3]);
             
@@ -2522,7 +2534,7 @@ int losstst_sender(void)
         }
         
         if (lc_phy_sel[3] && sub_total_snd_ble4 >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:BLEv4 Complete\n",
+            printf("SND:%u P:BLEv4 Complete\n",
                        (uint8_t)device_address[0]);
             
             device_info_form[3].pre_cnt = INT16_MAX;
@@ -2682,7 +2694,7 @@ int losstst_scanner(void)
         if (0 == complete_mark) {
             complete_mark = platform_uptime_get();
         } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
-            DEBUG_PRINT("RCV_Task completed\n");
+            printf("RCV_Task completed\n");
             passive_scan_control(-1);
             return 0;
         }
