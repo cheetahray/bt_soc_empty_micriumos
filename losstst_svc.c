@@ -17,6 +17,9 @@
 #include "gatt_db.h"
 #include "sl_sleeptimer.h"
 
+/* CMSIS-RTOS2 headers for task management */
+#include "cmsis_os2.h"
+
 /* ================== Debug Configuration ================== */
 #define CHK_UPDATE_ADV_PROCEDURE 0  /* Set to 1 to enable debug prints */
 
@@ -318,6 +321,40 @@ int64_t platform_uptime_get(void) {
     return (int64_t)ms;
 }
 
+/**
+ * @brief Check if platform can yield to other tasks
+ * 
+ * Determines if the current execution context allows yielding control
+ * to other tasks. Yielding is only safe in task context, not in ISR.
+ * 
+ * @return true if can yield (in task context), false otherwise (in ISR)
+ */
+static bool platform_can_yield(void) {
+    /* Check if RTOS kernel is running */
+    osKernelState_t state = osKernelGetState();
+    if (state != osKernelRunning) {
+        return false;
+    }
+    
+    /* In CMSIS-RTOS2, we cannot directly check interrupt nesting.
+     * A simple heuristic: if we can get the current thread, we're in task context.
+     * If osThreadGetId() returns NULL, we're likely in ISR or before scheduler start.
+     */
+    return (osThreadGetId() != NULL);
+}
+
+/**
+ * @brief Yield CPU to other tasks
+ * 
+ * Voluntarily gives up the CPU to allow other ready tasks of the same
+ * or higher priority to execute. This is useful in busy-wait loops
+ * to prevent blocking lower-priority tasks.
+ */
+static void platform_yield(void) {
+    /* Use CMSIS-RTOS2 thread yield */
+    osThreadYield();
+}
+
 /* ================== Platform Abstraction Functions ================== */
 
 /**
@@ -368,6 +405,38 @@ static char* txpwr_toa(int8_t pwr, char *str_p)
     }
     
     return str_p;
+}
+
+/**
+ * @brief Calculate advertising channel map based on inhibit flags
+ * 
+ * @param inhibit_ch37 true to disable channel 37
+ * @param inhibit_ch38 true to disable channel 38
+ * @param inhibit_ch39 true to disable channel 39
+ * @return Channel map value (bit 0=ch37, bit 1=ch38, bit 2=ch39)
+ */
+static uint8_t get_adv_channel_map(bool inhibit_ch37, bool inhibit_ch38, bool inhibit_ch39)
+{
+    uint8_t channel_map = 0x07;  /* Default: all channels (37, 38, 39) */
+    
+    /* Clear bits for inhibited channels */
+    if (inhibit_ch37) {
+        channel_map &= ~0x01;  /* Clear bit 0 (channel 37) */
+    }
+    if (inhibit_ch38) {
+        channel_map &= ~0x02;  /* Clear bit 1 (channel 38) */
+    }
+    if (inhibit_ch39) {
+        channel_map &= ~0x04;  /* Clear bit 2 (channel 39) */
+    }
+    
+    /* Ensure at least one channel is enabled */
+    if (channel_map == 0) {
+        channel_map = 0x07;  /* Fall back to all channels */
+        DEBUG_PRINT("Warning: All channels inhibited, using all channels\n");
+    }
+    
+    return channel_map;
 }
 
 /**
@@ -1125,36 +1194,6 @@ int sender_setup(const test_param_t *param)
         return err;
     }
     
-    /* Start advertising on selected PHYs */
-    /* PHY index mapping: 0=2M, 1=1M, 2=Coded(S8), 3=BLE4 */
-    if (param->phy_2m) {
-        err = update_adv(0, NULL, NULL, NULL);
-        if (err) {
-            DEBUG_PRINT("sender_setup: PHY 2M adv failed\n");
-        }
-    }
-    
-    if (param->phy_1m) {
-        err = update_adv(1, NULL, NULL, NULL);
-        if (err) {
-            DEBUG_PRINT("sender_setup: PHY 1M adv failed\n");
-        }
-    }
-    
-    if (param->phy_s8) {
-        err = update_adv(2, NULL, NULL, NULL);
-        if (err) {
-            DEBUG_PRINT("sender_setup: PHY Coded adv failed\n");
-        }
-    }
-    
-    if (param->phy_ble4) {
-        err = update_adv(3, NULL, NULL, NULL);
-        if (err) {
-            DEBUG_PRINT("sender_setup: BLE4 adv failed\n");
-        }
-    }
-    
     /* Build advertising parameter masks based on configuration flags */
     /* adv_param_mask[0]: bits to clear (using & ~mask) */
     /* adv_param_mask[1]: bits to set (using | mask) */
@@ -1166,16 +1205,82 @@ int sender_setup(const test_param_t *param)
         adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
     }
     
-    /* Note: Silicon Labs handles channel selection differently.
-     * inhibit_ch37/38/39 flags would need platform-specific API:
-     * sl_bt_advertiser_set_channel_map() for legacy advertising
-     * Channel mask: 0x07 = all channels (37, 38, 39)
-     *              0x06 = channels 38, 39 (inhibit ch37)
-     *              0x05 = channels 37, 39 (inhibit ch38)
-     *              0x03 = channels 37, 38 (inhibit ch39)
-     * This should be implemented in platform_create_adv_set() or
-     * platform_update_adv_param() if needed.
-     */
+    /* Calculate advertising channel map based on inhibit flags */
+    uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
+    
+    /* Start advertising on selected PHYs with modified parameters if needed */
+    /* PHY index mapping: 0=2M, 1=1M, 2=Coded(S8), 3=BLE4 */
+    if (param->phy_2m) {
+        if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
+            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][0];
+            adv_param_t work_adv_param = *base_param;
+            work_adv_param.options |= adv_param_mask[1];
+            work_adv_param.options &= ~adv_param_mask[0];
+            err = update_adv(0, &work_adv_param, NULL, NULL);
+        } else {
+            err = update_adv(0, NULL, NULL, NULL);
+        }
+        if (err) {
+            DEBUG_PRINT("sender_setup: PHY 2M adv failed\n");
+        } else {
+            /* Set channel map for this advertising set */
+            sl_bt_advertiser_set_channel_map(ext_adv[0], channel_map);
+        }
+    }
+    
+    if (param->phy_1m) {
+        if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
+            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][1];
+            adv_param_t work_adv_param = *base_param;
+            work_adv_param.options |= adv_param_mask[1];
+            work_adv_param.options &= ~adv_param_mask[0];
+            err = update_adv(1, &work_adv_param, NULL, NULL);
+        } else {
+            err = update_adv(1, NULL, NULL, NULL);
+        }
+        if (err) {
+            DEBUG_PRINT("sender_setup: PHY 1M adv failed\n");
+        } else {
+            /* Set channel map for this advertising set */
+            sl_bt_advertiser_set_channel_map(ext_adv[1], channel_map);
+        }
+    }
+    
+    if (param->phy_s8) {
+        if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
+            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][2];
+            adv_param_t work_adv_param = *base_param;
+            work_adv_param.options |= adv_param_mask[1];
+            work_adv_param.options &= ~adv_param_mask[0];
+            err = update_adv(2, &work_adv_param, NULL, NULL);
+        } else {
+            err = update_adv(2, NULL, NULL, NULL);
+        }
+        if (err) {
+            DEBUG_PRINT("sender_setup: PHY Coded adv failed\n");
+        } else {
+            /* Set channel map for this advertising set */
+            sl_bt_advertiser_set_channel_map(ext_adv[2], channel_map);
+        }
+    }
+    
+    if (param->phy_ble4) {
+        if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
+            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][3];
+            adv_param_t work_adv_param = *base_param;
+            work_adv_param.options |= adv_param_mask[1];
+            work_adv_param.options &= ~adv_param_mask[0];
+            err = update_adv(3, &work_adv_param, NULL, NULL);
+        } else {
+            err = update_adv(3, NULL, NULL, NULL);
+        }
+        if (err) {
+            DEBUG_PRINT("sender_setup: BLE4 adv failed\n");
+        } else {
+            /* Set channel map for this advertising set */
+            sl_bt_advertiser_set_channel_map(ext_adv[3], channel_map);
+        }
+    }
 
     /* Start passive scanning */
     err = passive_scan_control(0);
@@ -1244,6 +1349,25 @@ int scanner_setup(const test_param_t *param)
         return err;
     }
     
+    /* Build advertising parameter masks based on configuration flags */
+    adv_param_mask[0] = 0;
+    adv_param_mask[1] = 0;
+    
+    if (non_ANONYMOUS) {
+        adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
+    }
+    
+    /* Calculate advertising channel map based on inhibit flags */
+    /* Note: Scanner may use advertising for responses */
+    uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
+    
+    /* Apply channel map to all advertising sets if needed for responses */
+    for (int i = 0; i < 4; i++) {
+        if (round_phy_sel[i] && ext_adv_status[i].initialized) {
+            sl_bt_advertiser_set_channel_map(ext_adv[i], channel_map);
+        }
+    }
+    
     /* Start passive scanning */
     err = passive_scan_control(0);
     if (err) {
@@ -1292,6 +1416,24 @@ int numcast_setup(const test_param_t *param)
     if (err) {
         DEBUG_PRINT("numcast_setup: TX power set failed: %d\n", err);
         return err;
+    }
+    
+    /* Build advertising parameter masks based on configuration flags */
+    adv_param_mask[0] = 0;
+    adv_param_mask[1] = 0;
+    
+    if (non_ANONYMOUS) {
+        adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
+    }
+    
+    /* Calculate advertising channel map based on inhibit flags */
+    uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
+    
+    /* Apply channel map to all advertising sets */
+    for (int i = 0; i < 4; i++) {
+        if (round_phy_sel[i] && ext_adv_status[i].initialized) {
+            sl_bt_advertiser_set_channel_map(ext_adv[i], channel_map);
+        }
     }
     
     /* Stop all advertising first (blocking mode) */
@@ -1676,6 +1818,9 @@ void sender_finit(void)
         return;
     }
     
+    /* Calculate channel map (use global inhibit flags) */
+    uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
+    
     /* Mark all enabled PHY transmissions as complete */
     for (int idx = 0; idx < 4; idx++) {
         if (round_phy_sel[idx]) {
@@ -1686,12 +1831,24 @@ void sender_finit(void)
                 device_info_bt4_form.device_info = device_info_form[3];
             }
             
-            /* Use fast advertising parameters (index 3) with options modified */
-            /* Note: Platform-specific parameter modification needed here */
-            /* Original code: work_adv_param.options |= adv_param_mask[1]; */
-            /*                work_adv_param.options &= ~adv_param_mask[0]; */
+            /* Apply advertising parameter masks if configured */
+            if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
+                /* Get the base parameters for this advertising set */
+                const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][idx];
+                adv_param_t work_adv_param = *base_param;
+                
+                /* Apply masks: clear unwanted bits, set wanted bits */
+                work_adv_param.options |= adv_param_mask[1];
+                work_adv_param.options &= ~adv_param_mask[0];
+                
+                update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_finit_start_param);
+            } else {
+                /* Use default parameters without modification */
+                update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_finit_start_param);
+            }
             
-            update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_finit_start_param);
+            /* Set channel map for this advertising set */
+            sl_bt_advertiser_set_channel_map(ext_adv[idx], channel_map);
         }
     }
     
