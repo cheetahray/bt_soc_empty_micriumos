@@ -1591,15 +1591,11 @@ int sender_setup(const test_param_t *param)
     /* Build advertising parameter masks based on configuration flags */
     /* adv_param_mask[0]: bits to clear (using & ~mask) */
     /* adv_param_mask[1]: bits to set (using | mask) */
-    adv_param_mask[0] = 0;
-    adv_param_mask[1] = 0;
-    
-    /* Handle non_ANONYMOUS flag: if true, clear ANONYMOUS option */
-    if (non_ANONYMOUS) {
-        adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
-    }
+    adv_param_mask[0] = (non_ANONYMOUS) ? BT_LE_ADV_OPT_ANONYMOUS : 0;
+    adv_param_mask[1] = ((non_ANONYMOUS) ? BT_LE_ADV_OPT_USE_IDENTITY : 0);
     
     /* Calculate advertising channel map based on inhibit flags */
+    /* Note: Channel disabling is done via sl_bt_advertiser_set_channel_map() below */
     uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
     
     /* Start advertising on selected PHYs with modified parameters if needed */
@@ -1806,12 +1802,9 @@ int scanner_setup(const test_param_t *param)
     }
     
     /* Build advertising parameter masks based on configuration flags */
-    adv_param_mask[0] = 0;
-    adv_param_mask[1] = 0;
-    
-    if (non_ANONYMOUS) {
-        adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
-    }
+    /* Note: Scanner doesn't use adv_param_mask but set for consistency */
+    adv_param_mask[0] = (non_ANONYMOUS) ? BT_LE_ADV_OPT_ANONYMOUS : 0;
+    adv_param_mask[1] = ((non_ANONYMOUS) ? BT_LE_ADV_OPT_USE_IDENTITY : 0);
     
     /* Calculate advertising channel map based on inhibit flags */
     /* Note: Scanner may use advertising for responses */
@@ -1875,12 +1868,8 @@ int numcast_setup(const test_param_t *param)
     }
     
     /* Build advertising parameter masks based on configuration flags */
-    adv_param_mask[0] = 0;
-    adv_param_mask[1] = 0;
-    
-    if (non_ANONYMOUS) {
-        adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
-    }
+    adv_param_mask[0] = (non_ANONYMOUS) ? BT_LE_ADV_OPT_ANONYMOUS : 0;
+    adv_param_mask[1] = ((non_ANONYMOUS) ? BT_LE_ADV_OPT_USE_IDENTITY : 0);
     
     /* Calculate advertising channel map based on inhibit flags */
     uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
