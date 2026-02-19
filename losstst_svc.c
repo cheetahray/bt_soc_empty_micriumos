@@ -2946,13 +2946,13 @@ static void env_rssi_calc(void)
 {
     int64_t expire_tm = platform_uptime_get();
     
-    for (int phy_idx = 0; phy_idx < 4; phy_idx++) {
+    for (unsigned int phy_idx = 0; phy_idx < ARRAY_SIZE(env_rssi_rec); phy_idx++) {
         int16_t cnt = 0;
         int32_t avg = 0;
         int8_t lower = 20;
         int8_t upper = -127;
         
-        for (int idx = 0; idx < 256; idx++) {
+        for (unsigned int idx = 0; idx < ARRAY_SIZE(env_rssi_rec[0]); idx++) {
             int64_t rec_tm = env_rssi_rec[phy_idx][idx].expired_tm;
             int8_t rec_rssi = env_rssi_rec[phy_idx][idx].rssi;
             if (expire_tm <= rec_tm) {
