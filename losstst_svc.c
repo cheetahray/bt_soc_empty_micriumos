@@ -2143,7 +2143,7 @@ void blocking_adv(uint8_t index)
     }
     
     /* Stop advertising immediately */
-    platform_stop_adv(ext_adv[index]);
+    int err = platform_stop_adv(ext_adv[index]);
     
     DEBUG_PRINT("blocking_adv(%u): %s\n", index, err ? "failed" : "stopped");
     
