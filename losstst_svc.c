@@ -9,6 +9,7 @@
 #include "losstst_svc.h"
 #include <string.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <errno.h>
 #include <stdlib.h>
 
@@ -255,6 +256,9 @@ static const char *peek_sndpkt_form = "\\xff\\xffSND:%03u P:%s/%s R:%u/%u T:%d";
 static const char *peek_sndpkt_btv4_form = "\\xff\\xffSND:%03u P:%s%s R:%u/%u T:%d";
 static const char *peek_rcvpkt_form = "\\xff\\xffRCV:%03u P:%s/%s R:%u/%u S:%s(%s..%s) T:%s";
 static const char *peek_rcvpkt_btv4_form = "\\xff\\xffRCV:%03u P:%s%s R:%u/%u S:%s(%s..%s) T:%s";
+/* Log format strings */
+static const char *log_sender_form = "SENDER:%03u P:%s/%s R:%d/%u S:%s(%s..%s) T:%s";
+static const char *log_rcvpkt_form = "RCV:%03u P:%s/%s R:%d/%u S:%s(%s..%s) T:%s";
 
 uint16_t sub_total_snd_2m, sub_total_snd_1m, sub_total_snd_s8, sub_total_snd_ble4;
 uint16_t round_total_num;
@@ -316,6 +320,9 @@ static int8_t numcst_rssi[3];
 static int64_t numcst_phy_stamp_tm[4] = {0, 0, 0, 0};
 static uint8_t numcst_src_node[2] = {0, 0};
 static uint16_t numcst_rssi_idx = 0;
+static rcv_stamp_t rcv_stamp[4];  /* Current burst state */
+static char rssi_str[3][5];
+static char tx_pwr_str[5];
 
 static const uint16_t value_interval[][2]={
 	{VALUE_ADV_INT_MIN_0, VALUE_ADV_INT_MAX_0}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1)
@@ -337,6 +344,7 @@ static const uint16_t value_interval[][2]={
 /* Silicon Labs advertisement info structure (equivalent to Nordic's bt_hci_evt_le_ext_advertising_info) */
 typedef struct {
     int8_t rssi;            /* RSSI value in dBm */
+    int8_t tx_power;        /* TX power in dBm */
     uint8_t prim_phy;       /* Primary PHY: 1=1M, 3=Coded */
     uint8_t sec_phy;        /* Secondary PHY: 0=none(legacy), 1=1M, 2=2M, 3=Coded */
     uint8_t address_type;   /* Address type */
@@ -2847,6 +2855,305 @@ static bool numcast_parser(adv_data_t *data, void *user_data)
             } else {
                 dev_chr_p->step_fail = 1;
             }
+        }
+    } else {
+        dev_chr_p->step_fail = 1;
+    }
+    
+    /* Continue parsing if not completed */
+    return (dev_chr_p->step_completed) ? false : true;
+}
+
+/**
+ * @brief Update RSSI statistics with new sample
+ * 
+ * @param stamp_p Pointer to receive stamp structure
+ * @param rssi_val New RSSI value
+ */
+static void rssi_avg_procedure(rcv_stamp_t *stamp_p, int16_t rssi_val)
+{
+    stamp_p->rec.rssi_upper = (rssi_val > stamp_p->rec.rssi_upper) ? 
+                              rssi_val : stamp_p->rec.rssi_upper;
+    stamp_p->rec.rssi_lower = (rssi_val < stamp_p->rec.rssi_lower) ? 
+                              rssi_val : stamp_p->rec.rssi_lower;
+    stamp_p->rssi_acc += rssi_val;
+    stamp_p->rssi_idx += 1;
+    stamp_p->rec.rssi = stamp_p->rssi_acc / stamp_p->rssi_idx;
+}
+
+/**
+ * @brief Initialize RSSI statistics with first sample
+ * 
+ * @param stamp_p Pointer to receive stamp structure
+ * @param rssi_val Initial RSSI value
+ */
+static void rssi_idx_init(rcv_stamp_t *stamp_p, int16_t rssi_val)
+{
+    stamp_p->rec.rssi = rssi_val;
+    stamp_p->rec.rssi_upper = INT16_MIN;
+    stamp_p->rec.rssi_lower = INT16_MAX;
+    stamp_p->rssi_acc = rssi_val;
+    stamp_p->rssi_idx = 1;
+}
+
+/**
+ * @brief Process received burst test packet
+ * 
+ * This function handles burst test packets from remote senders, tracking:
+ * - Sender configuration and preset progress
+ * - Burst counting during active transmission
+ * - RSSI statistics (average, min, max)
+ * - Completion status and response acknowledgment
+ * 
+ * For sender mode: Checks for acknowledgment from remote receiver
+ * For scanner mode: Tracks received packets and calculates statistics
+ * 
+ * @param info_p Pointer to sl_adv_info_t advertising info structure
+ * @param form_p Pointer to device info from received packet
+ */
+static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
+{
+    rcv_stamp_t rcv_stamp_lc = {
+        .rec.rssi_upper = INT16_MIN, 
+        .rec.rssi_lower = INT16_MAX
+    };
+    uint8_t index;
+    uint16_t subtotal;
+    int16_t info_rssi;
+    bool sndinfo_output_req = false;
+    bool rcvinfo_output_req = false;
+
+    /* Extract info from advertising event structure */
+    /* Copy to avoid taking address of scalar with reverse storage order */
+    uint64_t eui_copy = form_p->eui.eui_64;
+    rcv_stamp_lc.rec.node = 0xFFFF & eui_copy;
+    rcv_stamp_lc.rec.pri_phy = info_p->prim_phy;
+    rcv_stamp_lc.rec.sec_phy = info_p->sec_phy;
+    info_rssi = (20 < info_p->rssi) ? -128 : info_p->rssi;
+    
+    /* Determine PHY index from primary and secondary PHY */
+    if (1 == rcv_stamp_lc.rec.pri_phy && 2 == rcv_stamp_lc.rec.sec_phy) {
+        index = 0;  /* 2M PHY */
+    } else if (1 == rcv_stamp_lc.rec.pri_phy && 1 == rcv_stamp_lc.rec.sec_phy) {
+        index = 1;  /* 1M PHY */
+    } else if (3 == rcv_stamp_lc.rec.pri_phy && 3 == rcv_stamp_lc.rec.sec_phy) {
+        index = 2;  /* Coded PHY S=8 */
+    } else if (1 == rcv_stamp_lc.rec.pri_phy && 0 == rcv_stamp_lc.rec.sec_phy) {
+        index = 3;  /* BLE4 (legacy advertising) */
+    } else {
+        return;  /* Unknown PHY combination */
+    }
+    
+    rcv_stamp_lc.rec.tx_pwr = info_p->tx_power;
+
+    /* Check if in sender mode - look for acknowledgment */
+    if (0 != sender_task_tgr(0)) {
+        if (0 == memcmp((const char *)&device_info_form[index], form_p, 
+                       sizeof(device_info_t))) {
+            ack_remote_resp[index] = true;
+        }
+        return;
+    }
+
+    /* Check if scanner is active and PHY is enabled */
+    if (0 == scanner_task_tgr(0) || scanner_inactive || !round_phy_sel[index]) {
+        return;
+    }
+
+    rcv_stamp_lc.rec.flow = form_p->flw_cnt;
+
+    /* Skip invalid flow count */
+    if (201 < rcv_stamp_lc.rec.flow) {
+        return;
+    }
+    /* Handle sender config-preset progress (pre_cnt = INT16_MIN) */
+    else if (INT16_MIN == form_p->pre_cnt) {
+        /* Check if this is a new sender or flow */
+        if (0 != memcmp(&rcv_stamp[index], &rcv_stamp_lc, 
+                       sizeof(rcv_stamp_lc.rec.flow) + 
+                       offsetof(recv_stats_t, flow))) {
+            rcv_stamp_lc.rec.subtotal = 0;
+            rcv_stamp_lc.rec.det_sender = 1;
+            rssi_idx_init(&rcv_stamp_lc, info_rssi);
+            sndinfo_output_req = true;
+        } else {
+            rcv_stamp_lc.rec.det_sender = 1;
+            rssi_avg_procedure(&rcv_stamp_lc, info_rssi);
+        }
+        
+        rcv_stamp[index] = rcv_stamp_lc;
+        rec_sets[index] = rcv_stamp[index].rec;
+        subtotal = sub_total_rcv[index] = 0;
+    }
+    /* Handle burst counting (0 < pre_cnt < INT16_MAX) */
+    else if (0 < form_p->pre_cnt && INT16_MAX != form_p->pre_cnt) {
+        subtotal = ++sub_total_rcv[index];
+        rcv_ratio_val[index][0] = subtotal;
+        rcv_ratio_val[index][1] = LOSS_TEST_BURST_COUNT * rcv_stamp_lc.rec.flow;
+        precnt_rcv[index] = form_p->pre_cnt;
+        sndr_id = rcv_stamp_lc.rec.node;
+        sndr_txpower = rcv_stamp_lc.rec.tx_pwr;
+    }
+    /* Handle pre-burst or other states */
+    else {
+        subtotal = sub_total_rcv[index];
+        rcv_ratio_val[index][0] = subtotal;
+        rcv_ratio_val[index][1] = LOSS_TEST_BURST_COUNT * rcv_stamp_lc.rec.flow;
+        sndr_id = rcv_stamp_lc.rec.node;
+        sndr_txpower = rcv_stamp_lc.rec.tx_pwr;
+    }
+
+    /* Update RSSI statistics if flow is valid and matches */
+    if (0 == rcv_stamp_lc.rec.flow || 201 < rcv_stamp_lc.rec.flow) {
+        /* Skip invalid flow */
+    } else if (0 == memcmp(&rcv_stamp[index], &rcv_stamp_lc, 
+                          offsetof(recv_stats_t, flow))) {
+        /* Same sender, same session */
+        if (rcv_stamp[index].rec.flow == rcv_stamp_lc.rec.flow) {
+            rcv_stamp_lc = rcv_stamp[index];
+            rcv_stamp_lc.rec.subtotal = subtotal;
+            rssi_avg_procedure(&rcv_stamp_lc, info_rssi);
+
+            /* Check for burst completion */
+            if (INT16_MAX == form_p->pre_cnt && !rcv_stamp_lc.rec.complete) {
+                /* Sender side completed */
+                rcv_stamp_lc.rec.complete = 1;
+                rec_sets[index] = rcv_stamp_lc.rec;
+            } else if (0 == form_p->pre_cnt) {
+                /* Sender side burst completed */
+                precnt_rcv[index] = 0;
+                remote_resp_form[index] = *form_p;
+                if (!rcv_stamp_lc.rec.dump_rcvinfo) {
+                    rcv_stamp_lc.rec.dump_rcvinfo = 1;
+                    rcvinfo_output_req = true;
+                }
+                rec_sets[index] = rcv_stamp_lc.rec;
+            } else if (0 > form_p->pre_cnt) {
+                precnt_rcv[index] = form_p->pre_cnt;
+            }
+            
+            rcv_stamp[index] = rcv_stamp_lc;
+            rcv_rssi_val[index][0] = rcv_stamp_lc.rec.rssi;
+            rcv_rssi_val[index][1] = (1 >= rcv_stamp_lc.rssi_idx) ? 
+                                     rcv_stamp_lc.rec.rssi : 
+                                     rcv_stamp_lc.rec.rssi_lower;
+            rcv_rssi_val[index][2] = (1 >= rcv_stamp_lc.rssi_idx) ? 
+                                     rcv_stamp_lc.rec.rssi : 
+                                     rcv_stamp_lc.rec.rssi_upper;
+            memcpy(peek_rcv_rssi[index], rcv_rssi_val[index], 
+                   sizeof(peek_rcv_rssi[index]));
+        } else {
+            /* New flow from same sender */
+            rcv_rssi_val[index][0] = rcv_stamp[index].rec.rssi = 
+                rcv_stamp[index].rssi_acc / rcv_stamp[index].rssi_idx;
+            rcv_rssi_val[index][1] = (1 >= rcv_stamp[index].rssi_idx) ? 
+                                     rcv_stamp[index].rec.rssi : 
+                                     rcv_stamp[index].rec.rssi_lower;
+            rcv_rssi_val[index][2] = (1 >= rcv_stamp[index].rssi_idx) ? 
+                                     rcv_stamp[index].rec.rssi : 
+                                     rcv_stamp[index].rec.rssi_upper;
+            memcpy(peek_rcv_rssi[index], rcv_rssi_val[index], 
+                   sizeof(peek_rcv_rssi[index]));
+            remote_tx_pwr[index] = rcv_stamp[index].rec.tx_pwr;
+
+            if (!rcv_stamp[index].rec.dump_rcvinfo) {
+                rcv_stamp[index].rec.dump_rcvinfo = 1;
+                rcvinfo_output_req = true;
+                rec_sets[index] = rcv_stamp[index].rec;
+            }
+
+            rssi_idx_init(&rcv_stamp_lc, info_rssi);
+            rcv_stamp[index] = rcv_stamp_lc;
+        }
+    } else {
+        /* New sender detected */
+        rssi_idx_init(&rcv_stamp_lc, info_rssi);
+        rcv_stamp[index] = rcv_stamp_lc;
+        
+        /* Log new sender info */
+        char *dst_p = ('\0' == *rcv_msg_str[0]) ? rcv_msg_str[0] : 
+                     (('\0' == *rcv_msg_str[1]) ? rcv_msg_str[1] : rcv_msg_str[2]);
+        snprintf(dst_p, 80, log_sender_form,
+                (uint8_t)rcv_stamp_lc.rec.node,
+                pri_phy_typ[rcv_stamp_lc.rec.pri_phy],
+                sec_phy_typ[rcv_stamp_lc.rec.sec_phy],
+                subtotal, rcv_stamp_lc.rec.flow * LOSS_TEST_BURST_COUNT,
+                rssi_toa(rcv_stamp_lc.rec.rssi, rssi_str[0]),
+                rssi_toa(rcv_stamp_lc.rec.rssi_lower, rssi_str[1]),
+                rssi_toa(rcv_stamp_lc.rec.rssi_upper, rssi_str[2]),
+                txpwr_toa(rcv_stamp_lc.rec.tx_pwr, tx_pwr_str));
+    }
+
+    /* Output receive info if requested */
+    if (rcvinfo_output_req) {
+        char *dst_p = ('\0' == *rcv_msg_str[0]) ? rcv_msg_str[0] : 
+                     (('\0' == *rcv_msg_str[1]) ? rcv_msg_str[1] : rcv_msg_str[2]);
+        snprintf(dst_p, 80, log_rcvpkt_form,
+                (uint8_t)rec_sets[index].node,
+                pri_phy_typ[rec_sets[index].pri_phy],
+                sec_phy_typ[rec_sets[index].sec_phy],
+                sub_total_rcv[index], rec_sets[index].flow * LOSS_TEST_BURST_COUNT,
+                rssi_toa(peek_rcv_rssi[index][0], rssi_str[0]),
+                rssi_toa(peek_rcv_rssi[index][1], rssi_str[1]),
+                rssi_toa(peek_rcv_rssi[index][2], rssi_str[2]),
+                txpwr_toa(rec_sets[index].tx_pwr, tx_pwr_str));
+    }
+
+    /* Output sender info if requested */
+    if (sndinfo_output_req) {
+        char *dst_p = ('\0' == *rcv_msg_str[0]) ? rcv_msg_str[0] : 
+                     (('\0' == *rcv_msg_str[1]) ? rcv_msg_str[1] : rcv_msg_str[2]);
+        snprintf(dst_p, 80, log_sender_form,
+                (uint8_t)rec_sets[index].node,
+                pri_phy_typ[rec_sets[index].pri_phy],
+                sec_phy_typ[rec_sets[index].sec_phy],
+                subtotal, rec_sets[index].flow * LOSS_TEST_BURST_COUNT,
+                rssi_toa(rec_sets[index].rssi, rssi_str[0]),
+                rssi_toa(rec_sets[index].rssi_lower, rssi_str[1]),
+                rssi_toa(rec_sets[index].rssi_upper, rssi_str[2]),
+                txpwr_toa(rec_sets[index].tx_pwr, tx_pwr_str));
+    }
+}
+
+/**
+ * @brief Parse BLE advertising data for burst test packets
+ * 
+ * This parser callback is invoked by bt_data_parse() to process each
+ * advertising data element. It checks for valid burst test format:
+ * - FLAGS element first
+ * - MANUFACTURER_DATA element second with device info and burst data
+ * 
+ * Validates manufacturer ID and form ID before calling tst_form_packet_rcv()
+ * to process the received data.
+ * 
+ * @param data BLE advertising data element
+ * @param user_data Pointer to dev_found_param_t structure
+ * @return true to continue parsing, false to stop
+ */
+static bool test_form_parser(adv_data_t *data, void *user_data)
+{
+    dev_found_param_t *dev_chr_p = (dev_found_param_t *)user_data;
+    sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
+    
+    /* Check for FLAGS element */
+    if (BT_DATA_FLAGS == data->type) {
+        if (0 == dev_chr_p->step_raw) {
+            dev_chr_p->step_flag++;
+        } else {
+            dev_chr_p->step_fail = 1;
+        }
+    }
+    /* Check for MANUFACTURER_DATA element */
+    else if (1 == dev_chr_p->step_flag && BT_DATA_MANUFACTURER_DATA == data->type) {
+        device_info_t *rcv_data_p = (device_info_t *)data->data;
+        
+        /* Validate manufacturer ID and form ID */
+        if (MANUFACTURER_ID == rcv_data_p->man_id && 
+            LOSS_TEST_FORM_ID == rcv_data_p->form_id) {
+            tst_form_packet_rcv(adv_info_p, rcv_data_p);
+            dev_chr_p->step_success = 1;
+        } else {
+            dev_chr_p->step_fail = 1;
         }
     } else {
         dev_chr_p->step_fail = 1;
