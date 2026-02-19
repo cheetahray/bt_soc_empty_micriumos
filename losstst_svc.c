@@ -2171,21 +2171,15 @@ void sender_finit(void)
                 device_info_bt4_form.device_info = device_info_form[3];
             }
             
-            /* Apply advertising parameter masks if configured */
-            if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
-                /* Get the base parameters for this advertising set */
-                const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][idx];
-                adv_param_t work_adv_param = *base_param;
-                
-                /* Apply masks: clear unwanted bits, set wanted bits */
-                work_adv_param.options |= adv_param_mask[1];
-                work_adv_param.options &= ~adv_param_mask[0];
-                
-                update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_finit_start_param);
-            } else {
-                /* Use default parameters without modification */
-                update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_finit_start_param);
-            }
+            /* Use group 3 parameters (1 second interval) for finalization */
+            const adv_param_t *base_param = non_connectable_adv_param_x[3][idx];
+            adv_param_t work_adv_param = *base_param;
+            
+            /* Apply masks: clear unwanted bits, set wanted bits */
+            work_adv_param.options |= adv_param_mask[1];
+            work_adv_param.options &= ~adv_param_mask[0];
+            
+            update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_finit_start_param);
             
             /* Set channel map for this advertising set */
             sl_bt_advertiser_set_channel_map(ext_adv[idx], channel_map);
