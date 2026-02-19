@@ -2560,8 +2560,7 @@ int losstst_scanner(void)
     
     /* Initialize on first call or after inactive period */
     if (scanner_inactive) {
-        rcv_stamp_t rcv_stamp[4];
-        memset(rcv_stamp, 0, sizeof(rcv_stamp_t) * 4);
+        memset(rcv_stamp, 0, sizeof(rcv_stamp));
         scanner_inactive = false;
         memset(rcv_ratio_val, 0, sizeof(rcv_ratio_val));
         
