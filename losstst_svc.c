@@ -22,6 +22,11 @@
 /* CMSIS-RTOS2 headers for task management */
 #include "cmsis_os2.h"
 
+/* ================== Utility Macros ================== */
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#endif
+
 /* ================== Debug Configuration ================== */
 #define CHK_UPDATE_ADV_PROCEDURE 0  /* Set to 1 to enable debug prints */
 
@@ -89,6 +94,290 @@
 	((const adv_start_param_t[]) { \
 		BT_LE_EXT_ADV_START_PARAM_INIT((_timeout), (_n_evts)) \
 	})
+
+/* ================== Configuration Constants ================== */
+
+/**
+ * Maximum number of advertising sets supported.
+ * On Nordic: CONFIG_BT_EXT_ADV_MAX_ADV_SET
+ * On Silicon Labs: Adjust according to your configuration
+ */
+#ifndef MAX_ADV_SETS
+#define MAX_ADV_SETS 5
+#endif
+
+/**
+ * Maximum device name length
+ * On Nordic: CONFIG_BT_DEVICE_NAME_MAX
+ * On Silicon Labs: Adjust according to your configuration
+ */
+#ifndef MAX_DEVICE_NAME_LEN
+#define MAX_DEVICE_NAME_LEN 30
+#endif
+
+/* ================== Advertising Interval Definitions ================== */
+
+/* Convert milliseconds to BLE interval units (0.625ms per unit) */
+#define MS_TO_BLE_INTERVAL(ms) (((unsigned int)(ms) * 16) / 10)
+
+/* Pre-defined advertising intervals from Bluetooth Core Spec 5.4 */
+#define VALUE_ADV_INT_MIN_0  30   /* TGAP(adv_fast_interval1) */
+#define VALUE_ADV_INT_MAX_0  60
+#define PARAM_ADV_INT_MIN_0  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MIN_0)
+#define PARAM_ADV_INT_MAX_0  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MAX_0)
+
+#define VALUE_ADV_INT_MIN_1  60
+#define VALUE_ADV_INT_MAX_1  120
+#define PARAM_ADV_INT_MIN_1  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MIN_1)
+#define PARAM_ADV_INT_MAX_1  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MAX_1)
+
+#define VALUE_ADV_INT_MIN_2  90   /* TGAP(adv_fast_interval1_coded) */
+#define VALUE_ADV_INT_MAX_2  180
+#define PARAM_ADV_INT_MIN_2  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MIN_2)
+#define PARAM_ADV_INT_MAX_2  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MAX_2)
+
+#define VALUE_ADV_INT_MIN_3  100  /* TGAP(adv_fast_interval2) */
+#define VALUE_ADV_INT_MAX_3  150
+#define PARAM_ADV_INT_MIN_3  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MIN_3)
+#define PARAM_ADV_INT_MAX_3  MS_TO_BLE_INTERVAL(VALUE_ADV_INT_MAX_3)
+
+#define VALUE_ADV_INT_MIN_4 200 
+#define VALUE_ADV_INT_MAX_4 300 
+#define PARAM_ADV_INT_MIN_4 (((unsigned int)VALUE_ADV_INT_MIN_4*16)/10)
+#define PARAM_ADV_INT_MAX_4 (((unsigned int)VALUE_ADV_INT_MAX_4*16)/10)
+
+#define VALUE_ADV_INT_MIN_5 300 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
+#define VALUE_ADV_INT_MAX_5 450 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
+#define PARAM_ADV_INT_MIN_5 (((unsigned int)VALUE_ADV_INT_MIN_5*16)/10)
+#define PARAM_ADV_INT_MAX_5 (((unsigned int)VALUE_ADV_INT_MAX_5*16)/10)
+
+#define VALUE_ADV_INT_MIN_6 500 
+#define VALUE_ADV_INT_MAX_6 650 
+#define PARAM_ADV_INT_MIN_6 (((unsigned int)VALUE_ADV_INT_MIN_6*16)/10)
+#define PARAM_ADV_INT_MAX_6 (((unsigned int)VALUE_ADV_INT_MAX_6*16)/10)
+
+#define VALUE_ADV_INT_MIN_7 750 
+#define VALUE_ADV_INT_MAX_7 950 
+#define PARAM_ADV_INT_MIN_7 (((unsigned int)VALUE_ADV_INT_MIN_7*16)/10)
+#define PARAM_ADV_INT_MAX_7 (((unsigned int)VALUE_ADV_INT_MAX_7*16)/10)
+
+#define VALUE_ADV_INT_MIN_8 1000 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
+#define VALUE_ADV_INT_MAX_8 1200 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
+#define PARAM_ADV_INT_MIN_8 (((unsigned int)VALUE_ADV_INT_MIN_8*16)/10)
+#define PARAM_ADV_INT_MAX_8 (((unsigned int)VALUE_ADV_INT_MAX_8*16)/10)
+
+#define VALUE_ADV_INT_MIN_9 2000 
+#define VALUE_ADV_INT_MAX_9 2400 
+#define PARAM_ADV_INT_MIN_9 (((unsigned int)VALUE_ADV_INT_MIN_9*16)/10)
+#define PARAM_ADV_INT_MAX_9 (((unsigned int)VALUE_ADV_INT_MAX_9*16)/10)
+
+#define VALUE_ADV_INT_MIN_10 3000 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
+#define VALUE_ADV_INT_MAX_10 3600 //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
+#define PARAM_ADV_INT_MIN_10 (((unsigned int)VALUE_ADV_INT_MIN_10*16)/10)
+#define PARAM_ADV_INT_MAX_10 (((unsigned int)VALUE_ADV_INT_MAX_10*16)/10)
+
+/* ================== Advertising Options and Flags ================== */
+
+/* Silicon Labs extended advertiser flags */
+#define SL_BT_EXT_ADV_ANONYMOUS         0x1  /* Anonymous advertising */
+#define SL_BT_EXT_ADV_INCLUDE_TX_POWER  0x2  /* Include TX power in adv packets */
+
+/* Advertising options - control advertising behavior via bitmask */
+#define BT_LE_ADV_OPT_NONE              0
+#define BT_LE_ADV_OPT_USE_TX_POWER      (1 << 0)  /* Include TX power in advertising */
+#define BT_LE_ADV_OPT_ANONYMOUS         (1 << 1)  /* Anonymous advertising */
+#define BT_LE_ADV_OPT_EXT_ADV           (1 << 2)  /* Use extended advertising API */
+#define BT_LE_ADV_OPT_NO_2M             (1 << 3)  /* Don't use 2M PHY */
+#define BT_LE_ADV_OPT_CODED             (1 << 4)  /* Use Coded PHY (Long Range) */
+#define BT_LE_ADV_OPT_USE_IDENTITY      (1 << 5)  /* Use identity address */
+#define BT_LE_ADV_OPT_CONNECTABLE       (1 << 6)  /* Connectable advertising */
+
+/* PHY type definitions */
+#define SL_BT_GAP_PHY_1M                0x1
+#define SL_BT_GAP_PHY_2M                0x2
+#define SL_BT_GAP_PHY_CODED             0x4
+
+/* ================== Constants ================== */
+
+#define MANUFACTURER_ID    0xFFFF
+#define LOSS_TEST_FORM_ID  0x0000
+#define LOSS_TEST_BURST_COUNT 250
+
+/* BLE AD Types */
+#define BT_DATA_FLAGS              0x01
+#define BT_DATA_TX_POWER           0x0A
+#define BT_DATA_NAME_COMPLETE      0x09
+#define BT_DATA_MANUFACTURER_DATA  0xFF
+
+/* BLE AD Flags */
+#define BT_LE_AD_NO_BREDR          0x04
+#define BT_LE_AD_GENERAL           0x02
+
+/* ================== Platform Selection ================== */
+#define PLATFORM_SILABS
+
+/* ================== Status Message Generation (Application Layer) ================== */
+
+/**
+ * @brief Test statistics structure for peek messages
+ * 
+ * This structure holds runtime statistics for generating
+ * status broadcast messages.
+ */
+typedef struct {
+    uint16_t sub_total_snd_2m;    /**< Total packets sent on 2M PHY */
+    uint16_t sub_total_snd_1m;    /**< Total packets sent on 1M PHY */
+    uint16_t sub_total_snd_s8;    /**< Total packets sent on Coded PHY */
+    uint16_t sub_total_snd_ble4;  /**< Total packets sent on BLE 4.x */
+    uint16_t sub_total_rcv[4];    /**< Total packets received per PHY */
+    uint16_t round_total_num;      /**< Target total packet count */
+    int8_t round_tx_pwr;           /**< Current TX power (dBm) */
+    bool round_phy_sel[4];         /**< PHY selection flags */
+} peek_stats_t;
+
+/**
+ * @brief Reception statistics structure
+ * 
+ * Per-PHY reception statistics for scanner peek messages.
+ */
+typedef struct {
+    uint16_t  node;
+	uint8_t  pri_phy;
+	uint8_t  sec_phy;
+	int8_t   tx_pwr;
+	uint16_t flow;
+	uint16_t subtotal;
+	int16_t  rssi;
+	int16_t  rssi_upper;
+	int16_t  rssi_lower;
+	unsigned det_sender:1;
+	unsigned dump_rcvinfo:1;
+	unsigned complete:1;
+	unsigned notified:1;
+} recv_stats_t;
+
+typedef struct __attribute__((__packed__)) {
+	recv_stats_t rec;
+	int rssi_acc;
+	int rssi_idx;
+} rcv_stamp_t;
+
+/* ================== Test Setup Functions ================== */
+
+/**
+ * @brief Test parameter structure for setup functions
+ * 
+ * This structure contains all parameters needed to configure
+ * the BLE test modes (sender, scanner, numcast, envmon).
+ */
+typedef struct {
+    int8_t txpwr;              /**< TX power level configuration index */
+    uint8_t interval_idx;      /**< Advertising interval index */
+    uint8_t count_idx;         /**< Total count index for sender mode */
+    bool phy_2m;               /**< Enable 2M PHY */
+    bool phy_1m;               /**< Enable 1M PHY */
+    bool phy_s8;               /**< Enable Coded PHY (S=8) */
+    bool phy_ble4;             /**< Enable BLE 4.x legacy mode */
+    bool ignore_rcv_resp;      /**< Ignore received responses */
+    bool inhibit_ch37;         /**< Disable advertising channel 37 */
+    bool inhibit_ch38;         /**< Disable advertising channel 38 */
+    bool inhibit_ch39;         /**< Disable advertising channel 39 */
+    bool non_ANONYMOUS;        /**< Use non-anonymous advertising */
+    void *envmon_abort;        /**< Environment monitor abort callback */
+    void *sender_abort;        /**< Sender abort callback */
+    void *scanner_abort;       /**< Scanner abort callback */
+    void *numcast_abort;       /**< Number cast abort callback */
+} test_param_t;
+
+/* ================== Data Structures ================== */
+
+/**
+ * @brief Advertisement status tracking structure
+ * Tracks the state of each advertising set
+ */
+typedef union {
+    uint8_t u8_val;
+    struct {
+        unsigned initialized:1;    /* Advertising set has been created */
+        unsigned update_param:1;   /* Parameters have been updated */
+        unsigned set_data:1;       /* Advertising data has been set */
+        unsigned start:1;          /* Advertising has been started */
+        unsigned stop:1;           /* Advertising has been stopped */
+    };
+} ext_adv_status_t;
+
+/**
+ * @brief Device information structure for advertising payload
+ * Manufacturer-specific data format
+ */
+typedef struct __attribute__((__packed__)) {
+    uint16_t man_id;      /* Manufacturer ID (0xFFFF) */
+    uint16_t form_id;     /* Form ID (0) */
+    int16_t  pre_cnt;     /* Packet counter */
+    uint16_t flw_cnt;     /* Flow counter (10 heartbeat/min) */
+    struct __attribute__((scalar_storage_order("big-endian"))) {
+        uint64_t eui_64;  /* Device EUI-64 address */
+    } eui;                /* EUI-64 in big-endian format */
+} device_info_t;
+
+/**
+ * @brief Bluetooth v4 compatible device information
+ */
+typedef struct __attribute__((__packed__)) {
+    device_info_t device_info;
+    uint8_t tail[10];     /* Additional data (device name) */
+} device_info_bt4_t;
+
+/**
+ * @brief Number cast information structure
+ */
+typedef struct __attribute__((__packed__)) {
+    uint16_t man_id;              /* Manufacturer ID (0xFFFF) */
+    uint16_t form_id;             /* Form ID */
+    uint16_t number_cast_form[4]; /* Number cast values */
+} numcast_info_t;
+
+/* ================== Platform Abstraction Layer ================== */
+
+/**
+ * @brief BLE advertising parameter structures for Silicon Labs BG/MG series
+ */
+
+/* TODO: Include appropriate Silicon Labs headers */
+/* #include "sl_bt_api.h" */
+
+typedef struct {
+    uint8_t  id;            /* Reserved for compatibility (unused) */
+    uint8_t  sid;           /* Reserved for periodic advertising (unused) */
+    uint8_t  secondary_max_skip; /* Reserved for extended adv optimization (unused) */
+    uint32_t interval_min;  /* Advertising interval minimum (0.625ms units) */
+    uint32_t interval_max;  /* Advertising interval maximum (0.625ms units) */
+    uint8_t  primary_phy;   /* Primary PHY: SL_BT_GAP_PHY_1M or SL_BT_GAP_PHY_CODED */
+    uint8_t  secondary_phy; /* Secondary PHY: SL_BT_GAP_PHY_1M, 2M, or CODED */
+    uint16_t options;       /* ⭐ KEY FIELD - Controls all advertising behavior:
+                             *   BT_LE_ADV_OPT_USE_TX_POWER: Include TX power in adv
+                             *   BT_LE_ADV_OPT_ANONYMOUS: Anonymous advertising
+                             *   BT_LE_ADV_OPT_EXT_ADV: Use extended advertising
+                             *   BT_LE_ADV_OPT_NO_2M: Don't use 2M PHY
+                             *   BT_LE_ADV_OPT_CODED: Use Coded PHY (Long Range)
+                             *   BT_LE_ADV_OPT_USE_IDENTITY: Use identity address
+                             *   BT_LE_ADV_OPT_CONNECTABLE: Connectable advertising
+                             */
+    void    *peer;          /* Reserved for directed advertising (unused) */
+} adv_param_t;
+
+typedef struct {
+    uint16_t timeout;       /* Duration in 10ms units (0=continuous) */
+    uint16_t num_events;    /* Max number of events (0=no limit) */
+} adv_start_param_t;
+
+typedef struct {
+    uint8_t type;          /* AD type (flags, name, manufacturer, etc.) */
+    uint8_t data_len;      /* Data length */
+    const uint8_t *data;   /* Data pointer */
+} adv_data_t;
+
+typedef uint8_t adv_handle_t;  /* Advertising handle (0-based index) */
 
 static bool round_phy_sel[4]={true,false,false,false};
 static bool sndr_abort_flag[4]={false,false,false,false};
@@ -302,45 +591,6 @@ static scanner_task_abort scanner_abort_p;
 static numcast_task_abort numcast_abort_p;
 static int8_t env_rssi[4][3];
 
-volatile bool ack_remote_resp[4];  // 远程响应ACK
-// scr input val
-static uint16_t xmt_ratio_val[4][2];
-static uint16_t rcv_ratio_val[4][2];
-static int8_t rcv_rssi_val[4][3];
-static int8_t rcv_state_val[4];
-static int8_t snd_state_val[4];
-static uint32_t rcv_stats[4];
-static uint32_t env_stats[4];
-static uint16_t sndr_id;
-static int8_t sndr_txpower;
-static char rcv_msg_str[3][80];
-static int64_t numcst_rssi_rec_tm;
-static rssi_stamp_t numcst_rssi_rec[32];
-static int8_t numcst_rssi[3];
-static int64_t numcst_phy_stamp_tm[4] = {0, 0, 0, 0};
-static uint8_t numcst_src_node[2] = {0, 0};
-static uint16_t numcst_rssi_idx = 0;
-static rcv_stamp_t rcv_stamp[4];  /* Current burst state */
-static char rssi_str[3][5];
-static char tx_pwr_str[5];
-
-static const uint16_t value_interval[][2]={
-	{VALUE_ADV_INT_MIN_0, VALUE_ADV_INT_MAX_0}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1)
-	{VALUE_ADV_INT_MIN_1, VALUE_ADV_INT_MAX_1}, 
-	{VALUE_ADV_INT_MIN_2, VALUE_ADV_INT_MAX_2}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1_coded)
-	{VALUE_ADV_INT_MIN_3, VALUE_ADV_INT_MAX_3}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2)
-	{VALUE_ADV_INT_MIN_4, VALUE_ADV_INT_MAX_4},
-	{VALUE_ADV_INT_MIN_5, VALUE_ADV_INT_MAX_5}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
-	{VALUE_ADV_INT_MIN_6, VALUE_ADV_INT_MAX_6},
-	{VALUE_ADV_INT_MIN_7, VALUE_ADV_INT_MAX_7},
-	{VALUE_ADV_INT_MIN_8, VALUE_ADV_INT_MAX_8}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
-	{VALUE_ADV_INT_MIN_9, VALUE_ADV_INT_MAX_9},
-	{VALUE_ADV_INT_MIN_10,VALUE_ADV_INT_MAX_10} //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
-	//,{VALUE_ADV_INT_MIN_n1, VALUE_ADV_INT_MAX_n1}
-	//,{VALUE_ADV_INT_MIN_n2, VALUE_ADV_INT_MAX_n2}
-	//,{VALUE_ADV_INT_MIN_n3, VALUE_ADV_INT_MAX_n3}
-};
-
 /* Silicon Labs advertisement info structure (equivalent to Nordic's bt_hci_evt_le_ext_advertising_info) */
 typedef struct {
     int8_t rssi;            /* RSSI value in dBm */
@@ -373,6 +623,46 @@ typedef struct {
     const void *temp_ptr;       /* Temporary pointer for data processing (preserves const) */
 } dev_found_param_t;
 
+volatile bool ack_remote_resp[4];  // 远程响应ACK
+// scr input val
+static uint16_t xmt_ratio_val[4][2];
+static uint16_t rcv_ratio_val[4][2];
+static int8_t rcv_rssi_val[4][3];
+static int8_t rcv_state_val[4];
+static int8_t snd_state_val[4];
+static uint32_t rcv_stats[4];
+static uint32_t env_stats[4];
+static uint16_t sndr_id;
+static int8_t sndr_txpower;
+static char rcv_msg_str[3][80];
+static int64_t numcst_rssi_rec_tm;
+static rssi_stamp_t numcst_rssi_rec[32];
+static int8_t numcst_rssi[3];
+static int64_t numcst_phy_stamp_tm[4] = {0, 0, 0, 0};
+static uint8_t numcst_src_node[2] = {0, 0};
+static uint16_t numcst_rssi_idx = 0;
+static rcv_stamp_t rcv_stamp[4];  /* Current burst state */
+static char rssi_str[3][5];
+static char tx_pwr_str[5];
+static dev_found_param_t dev_chr;  /* Device found parser state */
+static uint32_t env_rssi_idx[4];   /* Environment RSSI index per PHY */
+
+static const uint16_t value_interval[][2]={
+	{VALUE_ADV_INT_MIN_0, VALUE_ADV_INT_MAX_0}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1)
+	{VALUE_ADV_INT_MIN_1, VALUE_ADV_INT_MAX_1}, 
+	{VALUE_ADV_INT_MIN_2, VALUE_ADV_INT_MAX_2}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1_coded)
+	{VALUE_ADV_INT_MIN_3, VALUE_ADV_INT_MAX_3}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2)
+	{VALUE_ADV_INT_MIN_4, VALUE_ADV_INT_MAX_4},
+	{VALUE_ADV_INT_MIN_5, VALUE_ADV_INT_MAX_5}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
+	{VALUE_ADV_INT_MIN_6, VALUE_ADV_INT_MAX_6},
+	{VALUE_ADV_INT_MIN_7, VALUE_ADV_INT_MAX_7},
+	{VALUE_ADV_INT_MIN_8, VALUE_ADV_INT_MAX_8}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
+	{VALUE_ADV_INT_MIN_9, VALUE_ADV_INT_MAX_9},
+	{VALUE_ADV_INT_MIN_10,VALUE_ADV_INT_MAX_10} //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
+	//,{VALUE_ADV_INT_MIN_n1, VALUE_ADV_INT_MAX_n1}
+	//,{VALUE_ADV_INT_MIN_n2, VALUE_ADV_INT_MAX_n2}
+	//,{VALUE_ADV_INT_MIN_n3, VALUE_ADV_INT_MAX_n3}
+};
 
 int64_t platform_uptime_get(void) {
     // 使用64位 tick 计数（避免溢出）
@@ -1174,6 +1464,49 @@ int stop_passive_scan(void)
     return passive_scan_control(-1);
 }
 
+void sender_peek_msg(void)
+{
+    if (!svc_init_success) {
+        return;
+    }
+    
+    /* Generate message for 2M PHY (index 0) */
+    snprintf(peek_msg_str[0], sizeof(peek_msg_str[0]), peek_sndpkt_form,
+            device_address[0],
+            pri_phy_typ[1], sec_phy_typ[2],  /* 1M/2M */
+            sub_total_snd_2m,
+            (round_phy_sel[0]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[0]) = MANUFACTURER_ID;
+    
+    /* Generate message for 1M PHY (index 1) */
+    snprintf(peek_msg_str[1], sizeof(peek_msg_str[1]), peek_sndpkt_form,
+            device_address[0],
+            pri_phy_typ[1], sec_phy_typ[1],  /* 1M/1M */
+            sub_total_snd_1m,
+            (round_phy_sel[1]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[1]) = MANUFACTURER_ID;
+    
+    /* Generate message for Coded PHY (index 2) */
+    snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_sndpkt_form,
+            device_address[0],
+            pri_phy_typ[3], sec_phy_typ[3],  /* S8/S8 */
+            sub_total_snd_s8,
+            (round_phy_sel[2]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[2]) = MANUFACTURER_ID;
+    
+    /* Generate message for BLE 4.x (index 3) */
+    snprintf(peek_msg_str[3], sizeof(peek_msg_str[3]), peek_sndpkt_btv4_form,
+            device_address[0],
+            "BLE", "v4",
+            sub_total_snd_ble4,
+            (round_phy_sel[3]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[3]) = MANUFACTURER_ID;
+}
+
 /* ================== Test Setup Functions Implementation ================== */
 
 /* 
@@ -1352,6 +1685,68 @@ int sender_setup(const test_param_t *param)
     DEBUG_PRINT("Sender setup complete (TX power: %d dBm)\n", param->txpwr);
     
     return 0;
+}
+
+void scanner_peek_msg(void)
+{
+    if (!svc_init_success) {
+        return;
+    }
+    
+    /* Temporary buffers for RSSI and TX power strings */
+    char rssi_str[3][8];
+    char tx_pwr_str[8];
+    
+    /* Generate message for 2M PHY (index 0) */
+    snprintf(peek_msg_str[0], sizeof(peek_msg_str[0]), peek_rcvpkt_form,
+            (uint8_t)rec_sets[0].node,
+            pri_phy_typ[rec_sets[0].pri_phy],
+            sec_phy_typ[rec_sets[0].sec_phy],
+            sub_total_rcv[0],
+            LOSS_TEST_BURST_COUNT * rec_sets[0].flow,
+            rssi_toa(peek_rcv_rssi[0][0], rssi_str[0]),  /* current RSSI */
+            rssi_toa(peek_rcv_rssi[0][1], rssi_str[1]),  /* min RSSI */
+            rssi_toa(peek_rcv_rssi[0][2], rssi_str[2]),  /* max RSSI */
+            txpwr_toa(remote_tx_pwr[0], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[0]) = MANUFACTURER_ID;
+    
+    /* Generate message for 1M PHY (index 1) */
+    snprintf(peek_msg_str[1], sizeof(peek_msg_str[1]), peek_rcvpkt_form,
+            (uint8_t)rec_sets[1].node,
+            pri_phy_typ[rec_sets[1].pri_phy],
+            sec_phy_typ[rec_sets[1].sec_phy],
+            sub_total_rcv[1],
+            LOSS_TEST_BURST_COUNT * rec_sets[1].flow,
+            rssi_toa(peek_rcv_rssi[1][0], rssi_str[0]),
+            rssi_toa(peek_rcv_rssi[1][1], rssi_str[1]),
+            rssi_toa(peek_rcv_rssi[1][2], rssi_str[2]),
+            txpwr_toa(remote_tx_pwr[1], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[1]) = MANUFACTURER_ID;
+    
+    /* Generate message for Coded PHY (index 2) */
+    snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_rcvpkt_form,
+            (uint8_t)rec_sets[2].node,
+            pri_phy_typ[rec_sets[2].pri_phy],
+            sec_phy_typ[rec_sets[2].sec_phy],
+            sub_total_rcv[2],
+            LOSS_TEST_BURST_COUNT * rec_sets[2].flow,
+            rssi_toa(peek_rcv_rssi[2][0], rssi_str[0]),
+            rssi_toa(peek_rcv_rssi[2][1], rssi_str[1]),
+            rssi_toa(peek_rcv_rssi[2][2], rssi_str[2]),
+            txpwr_toa(remote_tx_pwr[2], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[2]) = MANUFACTURER_ID;
+    
+    /* Generate message for BLE 4.x (index 3) */
+    snprintf(peek_msg_str[3], sizeof(peek_msg_str[3]), peek_rcvpkt_btv4_form,
+            (uint8_t)rec_sets[3].node,
+            "BLE", "v4",
+            sub_total_rcv[3],
+            LOSS_TEST_BURST_COUNT * rec_sets[3].flow,
+            rssi_toa(peek_rcv_rssi[3][0], rssi_str[0]),
+            rssi_toa(peek_rcv_rssi[3][1], rssi_str[1]),
+            rssi_toa(peek_rcv_rssi[3][2], rssi_str[2]),
+            txpwr_toa(remote_tx_pwr[3], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[3]) = MANUFACTURER_ID;
 }
 
 int scanner_setup(const test_param_t *param)
@@ -1740,111 +2135,6 @@ int losstst_init(void)
     
     printf("=== System Ready ===\n");
     return 0;
-}
-
-void sender_peek_msg(void)
-{
-    if (!svc_init_success) {
-        return;
-    }
-    
-    /* Generate message for 2M PHY (index 0) */
-    snprintf(peek_msg_str[0], sizeof(peek_msg_str[0]), peek_sndpkt_form,
-            device_address[0],
-            pri_phy_typ[1], sec_phy_typ[2],  /* 1M/2M */
-            sub_total_snd_2m,
-            (round_phy_sel[0]) ? round_total_num : 0,
-            round_tx_pwr);
-    *(uint16_t *)(peek_msg_str[0]) = MANUFACTURER_ID;
-    
-    /* Generate message for 1M PHY (index 1) */
-    snprintf(peek_msg_str[1], sizeof(peek_msg_str[1]), peek_sndpkt_form,
-            device_address[0],
-            pri_phy_typ[1], sec_phy_typ[1],  /* 1M/1M */
-            sub_total_snd_1m,
-            (round_phy_sel[1]) ? round_total_num : 0,
-            round_tx_pwr);
-    *(uint16_t *)(peek_msg_str[1]) = MANUFACTURER_ID;
-    
-    /* Generate message for Coded PHY (index 2) */
-    snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_sndpkt_form,
-            device_address[0],
-            pri_phy_typ[3], sec_phy_typ[3],  /* S8/S8 */
-            sub_total_snd_s8,
-            (round_phy_sel[2]) ? round_total_num : 0,
-            round_tx_pwr);
-    *(uint16_t *)(peek_msg_str[2]) = MANUFACTURER_ID;
-    
-    /* Generate message for BLE 4.x (index 3) */
-    snprintf(peek_msg_str[3], sizeof(peek_msg_str[3]), peek_sndpkt_btv4_form,
-            device_address[0],
-            "BLE", "v4",
-            sub_total_snd_ble4,
-            (round_phy_sel[3]) ? round_total_num : 0,
-            round_tx_pwr);
-    *(uint16_t *)(peek_msg_str[3]) = MANUFACTURER_ID;
-}
-
-void scanner_peek_msg(void)
-{
-    if (!svc_init_success) {
-        return;
-    }
-    
-    /* Temporary buffers for RSSI and TX power strings */
-    char rssi_str[3][8];
-    char tx_pwr_str[8];
-    
-    /* Generate message for 2M PHY (index 0) */
-    snprintf(peek_msg_str[0], sizeof(peek_msg_str[0]), peek_rcvpkt_form,
-            (uint8_t)rec_sets[0].node,
-            pri_phy_typ[rec_sets[0].pri_phy],
-            sec_phy_typ[rec_sets[0].sec_phy],
-            sub_total_rcv[0],
-            LOSS_TEST_BURST_COUNT * rec_sets[0].flow,
-            rssi_toa(peek_rcv_rssi[0][0], rssi_str[0]),  /* current RSSI */
-            rssi_toa(peek_rcv_rssi[0][1], rssi_str[1]),  /* min RSSI */
-            rssi_toa(peek_rcv_rssi[0][2], rssi_str[2]),  /* max RSSI */
-            txpwr_toa(remote_tx_pwr[0], tx_pwr_str));
-    *(uint16_t *)(peek_msg_str[0]) = MANUFACTURER_ID;
-    
-    /* Generate message for 1M PHY (index 1) */
-    snprintf(peek_msg_str[1], sizeof(peek_msg_str[1]), peek_rcvpkt_form,
-            (uint8_t)rec_sets[1].node,
-            pri_phy_typ[rec_sets[1].pri_phy],
-            sec_phy_typ[rec_sets[1].sec_phy],
-            sub_total_rcv[1],
-            LOSS_TEST_BURST_COUNT * rec_sets[1].flow,
-            rssi_toa(peek_rcv_rssi[1][0], rssi_str[0]),
-            rssi_toa(peek_rcv_rssi[1][1], rssi_str[1]),
-            rssi_toa(peek_rcv_rssi[1][2], rssi_str[2]),
-            txpwr_toa(remote_tx_pwr[1], tx_pwr_str));
-    *(uint16_t *)(peek_msg_str[1]) = MANUFACTURER_ID;
-    
-    /* Generate message for Coded PHY (index 2) */
-    snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_rcvpkt_form,
-            (uint8_t)rec_sets[2].node,
-            pri_phy_typ[rec_sets[2].pri_phy],
-            sec_phy_typ[rec_sets[2].sec_phy],
-            sub_total_rcv[2],
-            LOSS_TEST_BURST_COUNT * rec_sets[2].flow,
-            rssi_toa(peek_rcv_rssi[2][0], rssi_str[0]),
-            rssi_toa(peek_rcv_rssi[2][1], rssi_str[1]),
-            rssi_toa(peek_rcv_rssi[2][2], rssi_str[2]),
-            txpwr_toa(remote_tx_pwr[2], tx_pwr_str));
-    *(uint16_t *)(peek_msg_str[2]) = MANUFACTURER_ID;
-    
-    /* Generate message for BLE 4.x (index 3) */
-    snprintf(peek_msg_str[3], sizeof(peek_msg_str[3]), peek_rcvpkt_btv4_form,
-            (uint8_t)rec_sets[3].node,
-            "BLE", "v4",
-            sub_total_rcv[3],
-            LOSS_TEST_BURST_COUNT * rec_sets[3].flow,
-            rssi_toa(peek_rcv_rssi[3][0], rssi_str[0]),
-            rssi_toa(peek_rcv_rssi[3][1], rssi_str[1]),
-            rssi_toa(peek_rcv_rssi[3][2], rssi_str[2]),
-            txpwr_toa(remote_tx_pwr[3], tx_pwr_str));
-    *(uint16_t *)(peek_msg_str[3]) = MANUFACTURER_ID;
 }
 
 const char* get_peek_msg_buffer(uint8_t index)
@@ -2771,7 +3061,6 @@ static void numcast_packet_evt(uint8_t idx, const device_info_t *form_p, const u
 static bool numcast_parser(adv_data_t *data, void *user_data)
 {
     dev_found_param_t *dev_chr_p = (dev_found_param_t *)user_data;
-    sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
     
     /* Check for FLAGS element */
     if (BT_DATA_FLAGS == data->type) {
@@ -2785,12 +3074,16 @@ static bool numcast_parser(adv_data_t *data, void *user_data)
     else if (1 == dev_chr_p->step_flag && BT_DATA_MANUFACTURER_DATA == data->type) {
         dev_chr_p->step_special_stream++;
         
+        /* Get RSSI and PHY index */
+        int8_t arg_rssi;
+        int8_t idx;
+        sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
+        
         /* Sanitize RSSI value */
-        int8_t arg_rssi = adv_info_p->rssi;
+        arg_rssi = adv_info_p->rssi;
         arg_rssi = (20 < arg_rssi) ? -128 : arg_rssi;
         
         /* Determine PHY index from primary and secondary PHY */
-        int8_t idx;
         if (1 == adv_info_p->prim_phy && 2 == adv_info_p->sec_phy) {
             idx = 0;  /* 2M PHY */
         } else if (1 == adv_info_p->prim_phy && 1 == adv_info_p->sec_phy) {
@@ -2813,13 +3106,9 @@ static bool numcast_parser(adv_data_t *data, void *user_data)
                 LOSS_TEST_FORM_ID == rcv_data_p->device_info.form_id &&
                 UINT16_MAX == *((uint16_t *)rcv_data_p->tail)) {
                 
-                /* Copy to aligned variables to avoid packed struct pointer warnings */
-                device_info_t device_info_copy;
-                uint64_t numcast_value;
-                memcpy(&device_info_copy, &rcv_data_p->device_info, sizeof(device_info_t));
-                memcpy(&numcast_value, rcv_data_p->tail + 2, sizeof(uint64_t));
-                
-                numcast_packet_evt(idx, &device_info_copy, &numcast_value, arg_rssi);
+                /* Number cast value is at offset +2 in tail */
+                numcast_packet_evt(idx, &rcv_data_p->device_info,
+                                 (uint64_t *)(rcv_data_p->tail + 2), arg_rssi);
                 dev_chr_p->step_success = 1;
             } else {
                 dev_chr_p->step_fail = 1;
@@ -2839,7 +3128,7 @@ static bool numcast_parser(adv_data_t *data, void *user_data)
                     /* Copy to aligned variable to avoid packed struct pointer warning */
                     uint64_t numcast_value;
                     memcpy(&numcast_value, rcv_data_p->number_cast_form, sizeof(uint64_t));
-                    numcast_packet_evt(idx, (const device_info_t *)dev_chr_p->temp_ptr,
+                    numcast_packet_evt(idx, (device_info_t *)dev_chr_p->temp_ptr,
                                      &numcast_value, arg_rssi);
                     dev_chr_p->step_success = 1;
                 } else {
@@ -3133,7 +3422,6 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
 static bool test_form_parser(adv_data_t *data, void *user_data)
 {
     dev_found_param_t *dev_chr_p = (dev_found_param_t *)user_data;
-    sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
     
     /* Check for FLAGS element */
     if (BT_DATA_FLAGS == data->type) {
@@ -3150,6 +3438,7 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
         /* Validate manufacturer ID and form ID */
         if (MANUFACTURER_ID == rcv_data_p->man_id && 
             LOSS_TEST_FORM_ID == rcv_data_p->form_id) {
+            sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
             tst_form_packet_rcv(adv_info_p, rcv_data_p);
             dev_chr_p->step_success = 1;
         } else {
@@ -3161,4 +3450,303 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
     
     /* Continue parsing if not completed */
     return (dev_chr_p->step_completed) ? false : true;
+}
+
+/**
+ * @brief Silicon Labs implementation of BLE advertising data parser
+ * 
+ * This function parses BLE advertising data in TLV (Type-Length-Value) format
+ * and invokes a callback function for each AD element found.
+ * 
+ * In Silicon Labs BLE stack, advertising data is provided as a raw byte buffer
+ * in TLV format:
+ * - Byte 0: Length (includes Type byte, but not Length byte itself)
+ * - Byte 1: AD Type
+ * - Bytes 2-N: Data (length = Length - 1)
+ * 
+ * This function is designed to be compatible with the Nordic Zephyr bt_data_parse()
+ * API, allowing parser callbacks to work on both platforms.
+ * 
+ * @param ad_data Pointer to advertising data buffer (TLV format)
+ * @param ad_len Length of advertising data buffer in bytes
+ * @param callback Parser callback function, called for each AD element
+ * @param user_data User data pointer passed to callback
+ * @return Number of AD elements parsed, or negative error code
+ * 
+ * @example
+ * static bool my_parser(adv_data_t *data, void *user_data) {
+ *     if (data->type == BT_DATA_FLAGS) {
+ *         // Process flags
+ *     }
+ *     return true;  // Continue parsing
+ * }
+ * 
+ * uint8_t ad_buffer[] = { 0x02, 0x01, 0x06, 0x05, 0xFF, 0xFF, 0xFF, 0x00, 0x00 };
+ * sl_bt_data_parse(ad_buffer, sizeof(ad_buffer), my_parser, NULL);
+ */
+static int sl_bt_data_parse(const uint8_t *ad_data, uint16_t ad_len,
+                           bool (*callback)(adv_data_t *data, void *user_data),
+                           void *user_data)
+{
+    if (ad_data == NULL || callback == NULL) {
+        return -EINVAL;
+    }
+    
+    uint16_t offset = 0;
+    int count = 0;
+    
+    /* Parse advertising data in TLV format */
+    while (offset < ad_len) {
+        /* Get Length field */
+        uint8_t length = ad_data[offset];
+        
+        /* End of data or padding */
+        if (length == 0) {
+            break;
+        }
+        
+        /* Check if we have enough data */
+        if (offset + 1 + length > ad_len) {
+            /* Invalid data - length field exceeds buffer */
+            return -EBADMSG;
+        }
+        
+        /* Extract Type and Data */
+        uint8_t type = ad_data[offset + 1];
+        const uint8_t *data = (length > 1) ? &ad_data[offset + 2] : NULL;
+        uint8_t data_len = (length > 1) ? (length - 1) : 0;
+        
+        /* Create adv_data_t structure for callback */
+        adv_data_t ad_element = {
+            .type = type,
+            .data_len = data_len,
+            .data = data
+        };
+        
+        /* Invoke callback */
+        bool continue_parsing = callback(&ad_element, user_data);
+        count++;
+        
+        /* Stop parsing if callback returns false */
+        if (!continue_parsing) {
+            break;
+        }
+        
+        /* Move to next AD element (Length byte + Length field content) */
+        offset += 1 + length;
+    }
+    
+    return count;
+}
+
+/* ================== Scanner Callback - BLE Packet Reception ================== */
+
+/**
+ * @brief BLE scan callback for processing received advertising packets
+ * 
+ * This is the main entry point for all received BLE advertising packets during
+ * scanning. It performs the following:
+ * 
+ * 1. Extracts PHY information from HCI event data
+ * 2. Updates packet statistics for scanner/environment monitor tasks
+ * 3. Routes packets to appropriate parser based on active task:
+ *    - numcast_parser: For number cast packets
+ *    - test_form_parser: For burst test packets
+ *    - remote_ctrl_parser: For remote control packets (1M PHY only)
+ * 
+ * Each parser validates packet structure and calls corresponding event handlers.
+ * The function uses net_buf_simple save/restore to allow multiple parse attempts
+ * without consuming the buffer.
+ * 
+ * Platform abstraction note:
+ * - Nordic: Uses bt_hci_evt_le_ext_advertising_info for PHY and RSSI extraction
+ * - Silicon Labs: TODO - adapt to sl_bt_evt_scanner_legacy_advertisement_report_t
+ *                  or sl_bt_evt_scanner_extended_advertisement_report_t
+ * 
+ * Silicon Labs device found callback for advertising reports
+ * This function processes both legacy and extended advertising reports
+ * 
+ * @param adv_info Pointer to sl_adv_info_t with PHY, RSSI, TX power information
+ * @param ad_data Advertising data buffer
+ * @param ad_len Advertising data length
+ */
+static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16_t ad_len)
+{
+    int8_t idx = -1;
+    int8_t rssi = adv_info->rssi;
+    
+    /* Determine PHY index from primary and secondary PHY */
+    if (1 == adv_info->prim_phy && 2 == adv_info->sec_phy) {
+        idx = 0;  /* 2M PHY */
+    } else if (1 == adv_info->prim_phy && 1 == adv_info->sec_phy) {
+        idx = 1;  /* 1M PHY */
+    } else if (3 == adv_info->prim_phy && 3 == adv_info->sec_phy) {
+        idx = 2;  /* Coded PHY S=8 */
+    } else if (1 == adv_info->prim_phy && 0 == adv_info->sec_phy) {
+        idx = 3;  /* BLE4 (legacy advertising) */
+    } else {
+        return;  /* Unknown PHY combination */
+    }
+    
+    /* Update burst test statistics if scanner task is active */
+    if (0 != scanner_task_tgr(0)) {
+        if (9999999ul < ++rcv_stats[idx]) {
+            rcv_stats[idx] = 9999999ul;  /* Cap at max value */
+        }
+    }
+    
+    /* Update environment monitor statistics if envmon task is active */
+    if (0 != envmon_task_tgr(0)) {
+        int8_t rssi_clamped = (20 < rssi) ? 20 : rssi;  /* Clamp invalid RSSI */
+        rssi_stamp_t loc_rec = {
+            .expired_tm = platform_uptime_get() + 60000,  /* 60 second expiry */
+            .rssi = rssi_clamped
+        };
+        env_rssi_rec[idx][(ARRAY_SIZE(env_rssi_rec[idx]) - 1) & env_rssi_idx[idx]++] = loc_rec;
+        
+        if (9999999ul < ++env_stats[idx]) {
+            env_stats[idx] = 9999999ul;  /* Cap at max value */
+        }
+    }
+    
+    /* Initialize parser state */
+    dev_chr.flw_cnt++;
+    dev_chr.step_raw = 0;
+    dev_chr.adv_info_p = adv_info;
+    
+    /* Try number cast parser if numcast task is active */
+    if (0 != numcst_task_tgr(0)) {
+        dev_chr.step_raw = 0;
+        sl_bt_data_parse(ad_data, ad_len, numcast_parser, &dev_chr);
+        if (dev_chr.step_success) {
+            return;  /* Successfully parsed as numcast packet */
+        }
+    }
+    
+    /* Try burst test parser if sender or scanner task is active */
+    if (0 != sender_task_tgr(0) || 0 != scanner_task_tgr(0)) {
+        dev_chr.step_raw = 0;
+        sl_bt_data_parse(ad_data, ad_len, test_form_parser, &dev_chr);
+        if (dev_chr.step_success) {
+            return;  /* Successfully parsed as burst test packet */
+        }
+    }
+    
+    /* Try remote control parser (only for 1M PHY) */
+    /* TODO: Implement remote_ctrl_parser if needed
+    if (1 == idx) {
+        dev_chr.step_raw = 0;
+        sl_bt_data_parse(ad_data, ad_len, remote_ctrl_parser, &dev_chr);
+    }
+    */
+}
+
+/* Silicon Labs helper functions for scan event handling */
+
+/**
+ * @brief Silicon Labs device found callback for legacy advertising
+ * 
+ * @param addr Device address (bd_addr*)
+ * @param rssi RSSI value in dBm
+ * @param ad_data Advertising data buffer
+ * @param ad_len Advertising data length
+ */
+static void device_found_legacy(const bd_addr *addr, int8_t rssi,
+                               const uint8_t *ad_data, uint16_t ad_len)
+{
+    /* Create advertising info structure for legacy advertising (BLE4) */
+    sl_adv_info_t adv_info = {
+        .rssi = rssi,
+        .tx_power = 127,  /* Unknown TX power */
+        .prim_phy = 1,    /* 1M PHY */
+        .sec_phy = 0,     /* No secondary PHY (legacy) */
+        .address_type = 0,
+        .address = *addr
+    };
+    
+    /* Call unified device_found function */
+    device_found(&adv_info, ad_data, ad_len);
+}
+
+/**
+ * @brief Silicon Labs device found callback for extended advertising
+ * 
+ * @param addr Device address (bd_addr*)
+ * @param rssi RSSI value in dBm
+ * @param tx_power TX power in dBm
+ * @param prim_phy Primary PHY (1=1M, 3=Coded)
+ * @param sec_phy Secondary PHY (1=1M, 2=2M, 3=Coded)
+ * @param ad_data Advertising data buffer
+ * @param ad_len Advertising data length
+ */
+static void device_found_extended(const bd_addr *addr, int8_t rssi, int8_t tx_power,
+                                 uint8_t prim_phy, uint8_t sec_phy,
+                                 const uint8_t *ad_data, uint16_t ad_len)
+{
+    /* Create advertising info structure for extended advertising */
+    sl_adv_info_t adv_info = {
+        .rssi = rssi,
+        .tx_power = tx_power,
+        .prim_phy = prim_phy,
+        .sec_phy = sec_phy,
+        .address_type = 0,
+        .address = *addr
+    };
+    
+    /* Call unified device_found function */
+    device_found(&adv_info, ad_data, ad_len);
+}
+
+/**
+ * @brief Silicon Labs scan event handler helper
+ * 
+ * This function should be called from your sl_bt_on_event() handler
+ * when receiving scan advertisement reports:
+ * 
+ * @example
+ * void sl_bt_on_event(sl_bt_msg_t *evt)
+ * {
+ *     switch (SL_BT_MSG_ID(evt->header)) {
+ *         case sl_bt_evt_scanner_legacy_advertisement_report_id: {
+ *             sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
+ *                 &evt->data.evt_scanner_legacy_advertisement_report;
+ *             
+ *             sl_bt_scanner_process_legacy_report(
+ *                 &scan_evt->address,
+ *                 scan_evt->rssi,
+ *                 scan_evt->data.data,
+ *                 scan_evt->data.len
+ *             );
+ *             break;
+ *         }
+ *         
+ *         case sl_bt_evt_scanner_extended_advertisement_report_id: {
+ *             sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
+ *                 &evt->data.evt_scanner_extended_advertisement_report;
+ *             
+ *             sl_bt_scanner_process_extended_report(
+ *                 &scan_evt->address,
+ *                 scan_evt->rssi,
+ *                 scan_evt->tx_power,
+ *                 scan_evt->primary_phy,
+ *                 scan_evt->secondary_phy,
+ *                 scan_evt->data.data,
+ *                 scan_evt->data.len
+ *             );
+ *             break;
+ *         }
+ *     }
+ * }
+ */
+void sl_bt_scanner_process_legacy_report(const bd_addr *addr, int8_t rssi,
+                                        const uint8_t *ad_data, uint16_t ad_len)
+{
+    device_found_legacy(addr, rssi, ad_data, ad_len);
+}
+
+void sl_bt_scanner_process_extended_report(const bd_addr *addr, int8_t rssi, int8_t tx_power,
+                                          uint8_t prim_phy, uint8_t sec_phy,
+                                          const uint8_t *ad_data, uint16_t ad_len)
+{
+    device_found_extended(addr, rssi, tx_power, prim_phy, sec_phy, ad_data, ad_len);
 }
