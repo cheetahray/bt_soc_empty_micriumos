@@ -3217,8 +3217,6 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
         return;  /* Unknown PHY combination */
     }
     
-    rcv_stamp_lc.rec.tx_pwr = info_p->tx_power;
-
     /* Check if in sender mode - look for acknowledgment */
     if (0 != sender_task_tgr(0)) {
         if (0 == memcmp((const char *)&device_info_form[index], form_p, 
@@ -3233,6 +3231,7 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
         return;
     }
 
+    rcv_stamp_lc.rec.tx_pwr = info_p->tx_power;
     rcv_stamp_lc.rec.flow = form_p->flw_cnt;
 
     /* Skip invalid flow count */
