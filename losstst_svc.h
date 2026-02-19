@@ -226,6 +226,21 @@ int8_t envmon_task_tgr(int8_t set);
 /* ================== Utility Functions ================== */
 
 /**
+ * @brief Advertising sent event handler
+ * 
+ * This function should be called from your BLE event handler when
+ * an advertising timeout/completion event occurs.
+ * 
+ * In Silicon Labs, call this from sl_bt_on_event() when receiving:
+ * - sl_bt_evt_advertiser_timeout_id
+ * 
+ * Nordic equivalent: loss_tst_sent_cb (automatic callback)
+ * 
+ * @param adv_handle Advertising handle that completed sending
+ */
+void losstst_adv_sent_handler(uint8_t adv_handle);
+
+/**
  * @brief Finalize sender (application-specific)
  * 
  * Application-defined function for sender finalization.

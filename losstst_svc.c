@@ -2106,6 +2106,56 @@ const char* get_peek_msg_buffer(uint8_t index)
 
 /* ================== Burst Test Functions Implementation ================== */
 
+/**
+ * @brief Advertising sent callback handler (equivalent to loss_tst_sent_cb)
+ * 
+ * This function should be called when an advertising event completes.
+ * In Silicon Labs, this is typically triggered by sl_bt_evt_advertiser_timeout.
+ * 
+ * Nordic equivalent: static void loss_tst_sent_cb(struct bt_le_ext_adv *adv, 
+ *                                                   struct bt_le_ext_adv_sent_info *info)
+ * 
+ * @param adv_handle Advertising handle that completed
+ */
+void losstst_adv_sent_handler(adv_handle_t adv_handle)
+{
+    uint8_t index = adv_handle;
+    
+    if (num_adv_set <= index) {
+        return;
+    }
+    
+    /* Mark advertising as stopped */
+    ext_adv_status[index].stop = 1;
+    
+    /* Handle sender abort flag for PHY test sets (index 0-3) */
+    if (index < ARRAY_SIZE(sndr_abort_flag) && sndr_abort_flag[index]) {
+        sndr_abort_flag[index] = false;
+        
+        /* Adjust flow count for burst test completion */
+        if (device_info_form[index].flw_cnt <= 200) {
+            device_info_form[index].flw_cnt *= LOSS_TEST_BURST_COUNT;
+        } else {
+            device_info_form[index].flw_cnt = 256;
+        }
+        
+        /* Update BT4 form if this is the legacy PHY */
+        if (index == 3) {
+            device_info_bt4_form.device_info = device_info_form[3];
+        }
+        
+        /* Re-advertise with updated data for 5 seconds */
+        update_adv(index, NULL, ratio_test_data_set[index], p_adv_5sec_start_param);
+    }
+    
+    /* Handle remote control message output callback (index 4) */
+    // if (index == 4) {
+    //     /* Remote control message sent callback */
+    //     extern void rc_msg_out_cb(void);
+    //     rc_msg_out_cb();
+    // }
+}
+
 void blocking_adv(uint8_t index)
 {
     if (index >= MAX_ADV_SETS) {

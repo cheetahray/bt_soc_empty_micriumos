@@ -404,7 +404,10 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     ///////////////////////////////////////////////////////////////////////////
     // Add additional event handlers here as your application requires!      //
     ///////////////////////////////////////////////////////////////////////////
-
+    case sl_bt_evt_advertiser_timeout_id:
+      // 手动调用我们的处理函数
+      losstst_adv_sent_handler(evt->data.evt_advertiser_timeout.handle);
+      break;
     // -------------------------------
     // Default event handler.
     default:
