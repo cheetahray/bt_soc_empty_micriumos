@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 
 /* Silicon Labs SDK headers */
 #include "sl_status.h"
@@ -187,6 +188,12 @@ static ext_adv_status_t ext_adv_status[MAX_ADV_SETS] = {
     {.u8_val = 0}, {.u8_val = 0}
 };
 
+/* RSSI tracking structures */
+typedef struct {
+    int64_t expired_tm;
+    int8_t rssi;
+} rssi_stamp_t;
+
 /* Device names for each advertising set */
 static char adv_dev_nm[MAX_ADV_SETS][MAX_DEVICE_NAME_LEN + 1];
 
@@ -273,15 +280,23 @@ bool inhibit_ch37;              /**< Inhibit advertising channel 37 */
 bool inhibit_ch38;              /**< Inhibit advertising channel 38 */
 bool inhibit_ch39;              /**< Inhibit advertising channel 39 */
 bool non_ANONYMOUS;             /**< Non-anonymous advertising flag */
-void *envmon_abort_p;           /**< Environment monitor abort callback */
-void *sender_abort_p;           /**< Sender abort callback */
-void *scanner_abort_p;          /**< Scanner abort callback */
-void *numcast_abort_p;          /**< Number cast abort callback */
 bool scanner_inactive;          /**< Scanner inactive flag */
 uint64_t number_cast_val;       /**< Number cast value */
 uint64_t number_cast_rxval;     /**< Number cast received value */
 bool number_cast_auto;          /**< Number cast auto mode flag */
 static int16_t precnt_rcv[4];
+static rssi_stamp_t env_rssi_rec[4][256];
+
+typedef bool (*envmon_task_abort)(void);
+typedef bool (*sender_task_abort)(void);
+typedef bool (*scanner_task_abort)(void);
+typedef bool (*numcast_task_abort)(void);
+//typedef void (*txpower_setup)(int8_t);
+static envmon_task_abort envmon_abort_p;
+static sender_task_abort sender_abort_p;
+static scanner_task_abort scanner_abort_p;
+static numcast_task_abort numcast_abort_p;
+static int8_t env_rssi[4][3];
 
 volatile bool ack_remote_resp[4];  // 远程响应ACK
 // scr input val
@@ -295,6 +310,9 @@ static uint32_t env_stats[4];
 static uint16_t sndr_id;
 static int8_t sndr_txpower;
 static char rcv_msg_str[3][80];
+static int64_t numcst_rssi_rec_tm;
+static rssi_stamp_t numcst_rssi_rec[32];
+static int8_t numcst_rssi[3];
 
 static const uint16_t value_interval[][2]={
 	{VALUE_ADV_INT_MIN_0, VALUE_ADV_INT_MAX_0}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1)
@@ -1657,7 +1675,7 @@ int my_app_init(void)
  * 
  * 這是推薦的初始化順序
  */
-int complete_system_init(void)
+int losstst_init(void)
 {
     int err;
     
@@ -2485,4 +2503,170 @@ int losstst_scanner(void)
     passive_scan_control(((0 >= retval) || (2 == round_scan_method/* && rc_party*/)) ? 0 : round_scan_method);
     
     return retval;
+}
+
+/* ================== RSSI Helper Functions ================== */
+
+/**
+ * @brief Calculate number cast RSSI statistics
+ * 
+ * Updates average, min, max RSSI values from recent number cast packets.
+ * Only recalculates if at least 50ms have passed since last calculation.
+ */
+static void numcst_rssi_calc(int64_t tm_stamp)
+{
+    if (llabs(numcst_rssi_rec_tm - tm_stamp) < 50) {
+        return;
+    }
+    
+    numcst_rssi_rec_tm = tm_stamp;
+    int8_t cnt = 0;
+    int16_t avg = 0;
+    int8_t lower = 20;
+    int8_t upper = -127;
+    
+    for (int idx = 0; idx < 32; idx++) {
+        int64_t rec_tm = numcst_rssi_rec[idx].expired_tm;
+        int8_t rec_rssi = numcst_rssi_rec[idx].rssi;
+        if (numcst_rssi_rec_tm <= rec_tm) {
+            avg = avg + rec_rssi;
+            cnt = cnt + 1;
+            lower = (lower < rec_rssi) ? lower : rec_rssi;
+            upper = (upper > rec_rssi) ? upper : rec_rssi;
+        }
+    }
+    
+    if (cnt) {
+        avg /= cnt;
+    }
+    
+    numcst_rssi[0] = avg;
+    numcst_rssi[1] = (20 == lower) ? 0 : lower;
+    numcst_rssi[2] = (-127 == upper) ? 0 : upper;
+}
+
+int losstst_numcast(void)
+{
+    if (!svc_init_success) {
+        return -1;
+    }
+    
+    static bool cast_auto = false;
+    
+    /* Check for abort condition */
+    if(numcast_abort_p) {
+        cast_auto = false;
+        number_cast_rxval = UINT64_MAX;
+        
+        /* Stop advertising on all PHYs */
+        blocking_adv(0);
+        update_adv(0, NULL, NULL, p_adv_1sec_start_param);
+        blocking_adv(1);
+        update_adv(1, NULL, NULL, p_adv_1sec_start_param);
+        blocking_adv(2);
+        update_adv(2, NULL, NULL, p_adv_1sec_start_param);
+        blocking_adv(3);
+        update_adv(3, NULL, NULL, p_adv_1sec_start_param);
+        
+        /* Reset to scan method 0 (all PHYs) */
+        passive_scan_control(0);
+        return 0;
+    }
+    
+    /* Check if number cast value or auto mode changed */
+    if (number_cast_val != *(uint64_t *)p_number_cast_form || cast_auto != number_cast_auto) {
+        number_cast_val = *(uint64_t *)p_number_cast_form;
+        cast_auto = number_cast_auto;
+        
+        /* Prepare start parameters: continuous if auto, 10 events if manual */
+        const adv_start_param_t *start_param = cast_auto ? 
+            p_adv_default_start_param :  /* Continuous (timeout=0, events=0) */
+            BT_LE_EXT_ADV_START_PARAM(0, 10);  /* 10 events */
+        
+        adv_param_t work_adv_param;
+        uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
+        
+        for (int idx = 0; idx < 4; idx++) {
+            blocking_adv(idx);
+            
+            if (round_phy_sel[idx]) {
+                /* Get base parameters from the table */
+                const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][idx];
+                work_adv_param = *base_param;
+                
+                /* Apply channel inhibit and identity options */
+                work_adv_param.options |= adv_param_mask[1];
+                work_adv_param.options &= ~adv_param_mask[0];
+                
+                if (idx == 3) {
+                    /* BLE4 uses special format with number cast in tail */
+                    numcast_bt4_form = device_info_bt4_form;
+                    *((uint16_t *)numcast_bt4_form.tail) = UINT16_MAX;
+                    *((uint64_t *)(2 + numcast_bt4_form.tail)) = number_cast_val;
+                    update_adv(idx, &work_adv_param, number_cast_data_set[1], start_param);
+                } else {
+                    update_adv(idx, &work_adv_param, number_cast_data_set[0], start_param);
+                }
+                
+                /* Set channel map for this advertising set */
+                sl_bt_advertiser_set_channel_map(ext_adv[idx], channel_map);
+            }
+        }
+    }
+    
+    /* Update RSSI statistics */
+    numcst_rssi_calc(platform_uptime_get());
+    
+    return 1;  /* Continue numcast loop */
+}
+
+/**
+ * @brief Calculate environment RSSI statistics for all PHYs
+ * 
+ * Updates average, min, max RSSI values from recent environmental scan.
+ */
+static void env_rssi_calc(void)
+{
+    int64_t expire_tm = platform_uptime_get();
+    
+    for (int phy_idx = 0; phy_idx < 4; phy_idx++) {
+        int16_t cnt = 0;
+        int32_t avg = 0;
+        int8_t lower = 20;
+        int8_t upper = -127;
+        
+        for (int idx = 0; idx < 256; idx++) {
+            int64_t rec_tm = env_rssi_rec[phy_idx][idx].expired_tm;
+            int8_t rec_rssi = env_rssi_rec[phy_idx][idx].rssi;
+            if (expire_tm <= rec_tm) {
+                avg = avg + rec_rssi;
+                cnt = cnt + 1;
+                lower = (lower < rec_rssi) ? lower : rec_rssi;
+                upper = (upper > rec_rssi) ? upper : rec_rssi;
+            }
+        }
+        
+        if (cnt) {
+            avg /= cnt;
+        }
+        
+        env_rssi[phy_idx][0] = avg;
+        env_rssi[phy_idx][1] = (20 == lower) ? 0 : lower;
+        env_rssi[phy_idx][2] = (-127 == upper) ? 0 : upper;
+    }
+}
+
+int losstst_envmon(void)
+{
+    if (!svc_init_success) {
+        return -1;
+    }
+    
+    /* Calculate environment RSSI statistics */
+    env_rssi_calc();
+    
+    /* Check if envmon task is still active */
+    int8_t task_status = losstst_task_tgr(0, envmon_tgr);
+    
+    return (0 != task_status) ? 1 : 0;
 }

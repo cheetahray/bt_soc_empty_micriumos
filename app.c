@@ -44,7 +44,7 @@ void app_init(void)
   // Put your additional application init code here!                         //
   // This is called once during start-up.                                    //
   /////////////////////////////////////////////////////////////////////////////
-  complete_system_init();
+  losstst_init();
 
 }
 

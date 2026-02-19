@@ -580,7 +580,7 @@ void sender_finit(void);
  */
 int update_adv_port_init(const uint8_t *device_address);
 
-int complete_system_init(void);
+int losstst_init(void);
 
 /* ================== Status Message Generation (Application Layer) ================== */
 
