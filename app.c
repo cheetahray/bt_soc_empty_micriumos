@@ -36,6 +36,9 @@
 
 // The advertising set handle allocated from Bluetooth stack.
 static uint8_t advertising_set_handle = 0xff;
+
+// Advertising control flag: 0 = sl_bt_on_event owns advertising, 1 = range test owns advertising
+static volatile uint8_t adv_owner_flag = 0;
 /* ================== Global Variables ================== */
 
 /* Task state flags */
@@ -171,7 +174,7 @@ void app_init(void)
 // Application Process Action.
 void app_process_action(void)
 {
-  if (app_is_process_required()) {
+    if (app_is_process_required()) {
     /////////////////////////////////////////////////////////////////////////////
     // Put your additional application code here!                              //
     // This is will run each time app_proceed() is called.                     //
@@ -194,6 +197,13 @@ void app_process_action(void)
     
     /* ========== Task Selection Phase ========== */
     if (!task_ENVMON && !task_SCANNER && !task_SENDER && !task_NUMCAST) {
+        // 只在 sl_bt_on_event 不持有廣播時才允許 range test 控制
+        if (adv_owner_flag != 0) {
+            // 已經在 range test 控制下，繼續
+        } else {
+            // 若目前廣播由 sl_bt_on_event 控制，則不進行 range test
+            return;
+        }
         /* No task active - check for task triggers */
         
         /* Note: DIP switch logic (poll_cfg_switch, load_parm_dipswitch) not ported */
@@ -239,6 +249,12 @@ void app_process_action(void)
         }
         
         /* ========== Task Setup Phase ========== */
+        if (task_SCANNER || task_SENDER || task_NUMCAST || task_ENVMON) {
+            // 切換旗標，range test 取得廣播控制權
+            adv_owner_flag = 1;
+            // 停止 sl_bt_on_event 的廣播（如果有）
+            sl_bt_legacy_advertiser_stop(advertising_set_handle);
+        }
         if (task_SCANNER) {
             blocking_adv(0);
             blocking_adv(1);
@@ -350,6 +366,13 @@ void app_process_action(void)
             numcst_task_tgr(-numcst_task_tgr(0));
         }
     }
+    // 若所有 range test 任務都結束，切回 sl_bt_on_event 控制權並恢復廣播
+    if (!task_ENVMON && !task_SCANNER && !task_SENDER && !task_NUMCAST && adv_owner_flag == 1) {
+        adv_owner_flag = 0;
+        // 重新啟動 sl_bt_on_event 的廣播
+        sl_bt_legacy_advertiser_generate_data(advertising_set_handle, sl_bt_advertiser_general_discoverable);
+        sl_bt_legacy_advertiser_start(advertising_set_handle, sl_bt_legacy_advertiser_connectable);
+    }
   }
 }
 
@@ -363,33 +386,35 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 {
   sl_status_t sc;
 
-  switch (SL_BT_MSG_ID(evt->header)) {
+    switch (SL_BT_MSG_ID(evt->header)) {
     // -------------------------------
     // This event indicates the device has started and the radio is ready.
     // Do not call any stack command before receiving this boot event!
-    case sl_bt_evt_system_boot_id:
-      // Create an advertising set.
-      sc = sl_bt_advertiser_create_set(&advertising_set_handle);
-      app_assert_status(sc);
+        case sl_bt_evt_system_boot_id:
+            // 只有 adv_owner_flag == 0 時才由 sl_bt_on_event 控制廣播
+            if (adv_owner_flag != 0) break;
+            // Create an advertising set.
+            sc = sl_bt_advertiser_create_set(&advertising_set_handle);
+            app_assert_status(sc);
 
-      // Generate data for advertising
-      sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
-                                                 sl_bt_advertiser_general_discoverable);
-      app_assert_status(sc);
+            // Generate data for advertising
+            sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
+                                                                                                 sl_bt_advertiser_general_discoverable);
+            app_assert_status(sc);
 
-      // Set advertising interval to 100ms.
-      sc = sl_bt_advertiser_set_timing(
-        advertising_set_handle,
-        160, // min. adv. interval (milliseconds * 1.6)
-        160, // max. adv. interval (milliseconds * 1.6)
-        0,   // adv. duration
-        0);  // max. num. adv. events
-      app_assert_status(sc);
-      // Start advertising and enable connections.
-      sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
-                                         sl_bt_legacy_advertiser_connectable);
-      app_assert_status(sc);
-      break;
+            // Set advertising interval to 100ms.
+            sc = sl_bt_advertiser_set_timing(
+                advertising_set_handle,
+                160, // min. adv. interval (milliseconds * 1.6)
+                160, // max. adv. interval (milliseconds * 1.6)
+                0,   // adv. duration
+                0);  // max. num. adv. events
+            app_assert_status(sc);
+            // Start advertising and enable connections.
+            sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
+                                                                                 sl_bt_legacy_advertiser_connectable);
+            app_assert_status(sc);
+            break;
 
     // -------------------------------
     // This event indicates that a new connection was opened.
@@ -398,17 +423,20 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
     // -------------------------------
     // This event indicates that a connection was closed.
-    case sl_bt_evt_connection_closed_id:
-      // Generate data for advertising
-      sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
-                                                 sl_bt_advertiser_general_discoverable);
-      app_assert_status(sc);
+        case sl_bt_evt_connection_closed_id:
+            // 只有 adv_owner_flag == 0 時才自動重啟廣播
+            if (adv_owner_flag == 0) {
+                // Generate data for advertising
+                sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
+                                                                                                     sl_bt_advertiser_general_discoverable);
+                app_assert_status(sc);
 
-      // Restart advertising after client has disconnected.
-      sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
-                                         sl_bt_legacy_advertiser_connectable);
-      app_assert_status(sc);
-      break;
+                // Restart advertising after client has disconnected.
+                sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
+                                                                                     sl_bt_legacy_advertiser_connectable);
+                app_assert_status(sc);
+            }
+            break;
 
     ///////////////////////////////////////////////////////////////////////////
     // Add additional event handlers here as your application requires!      //
