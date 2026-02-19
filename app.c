@@ -44,11 +44,7 @@ void app_init(void)
   // Put your additional application init code here!                         //
   // This is called once during start-up.                                    //
   /////////////////////////////////////////////////////////////////////////////
-  // 取得裝置位址
-  uint8_t address_type;
-  sl_bt_system_get_identity_address(&address, &address_type);
-  // 初始化
-  losstst_svc_init(address.addr);
+  complete_system_init();
 
 }
 
@@ -131,3 +127,4 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
       break;
   }
 }
+

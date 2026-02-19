@@ -40,15 +40,6 @@ extern "C" {
 #define MAX_DEVICE_NAME_LEN 30
 #endif
 
-/**
- * Default device name
- * On Nordic: CONFIG_BT_DEVICE_NAME
- * On Silicon Labs: Adjust according to your configuration
- */
-#ifndef DEFAULT_DEVICE_NAME
-#define DEFAULT_DEVICE_NAME "Turnkey LossTest"
-#endif
-
 /* ================== Advertising Interval Definitions ================== */
 
 /* Convert milliseconds to BLE interval units (0.625ms per unit) */
@@ -113,6 +104,147 @@ extern "C" {
 /* ================== Platform Selection ================== */
 #define PLATFORM_SILABS
 
+/**
+ * @brief Stop all advertising sets
+ * 
+ * @return 0 on success, negative error code on failure
+ */
+int stop_all_advertising(void);
+
+/**
+ * @brief Get the device name for a specific advertising set
+ * 
+ * @param index Advertising set index
+ * @return Pointer to device name string, NULL if invalid index
+ */
+const char* get_adv_device_name(uint8_t index);
+
+/**
+ * @brief Set custom device name for an advertising set
+ * 
+ * @param index Advertising set index
+ * @param name Device name (max MAX_DEVICE_NAME_LEN chars)
+ * @return 0 on success, negative error code on failure
+ */
+int set_adv_device_name(uint8_t index, const char *name);
+
+/* ================== TX Power Control ================== */
+
+/**
+ * @brief Set TX power for advertising sets
+ * 
+ * This function sets the transmit power for advertising on all advertising sets.
+ * The actual power level may be adjusted by the platform to the nearest supported value.
+ * 
+ * @param tx_power_dbm Requested TX power in dBm (e.g., -40 to +8)
+ * @param num_handles Number of advertising handles to configure (0-4)
+ * @return 0 on success, negative error code on failure
+ *         -EINVAL: Invalid parameters
+ *         -ENOTSUP: Feature not supported
+ */
+int set_adv_tx_power(int8_t tx_power_dbm, uint8_t num_handles);
+
+/* ================== Scanner Control ================== */
+
+/**
+ * @brief Start passive scanning with specific PHY
+ * 
+ * This function starts passive BLE scanning to discover advertising devices.
+ * The scan method determines which PHY to use for scanning.
+ * 
+ * @param method Scan method:
+ *               0: All PHYs (1M + Coded if available)
+ *               1: 1M PHY only
+ *               2: Coded PHY only
+ *               -1: Stop scanning
+ * @return 0 on success, negative error code on failure
+ *         -EINVAL: Invalid method
+ *         -ENOTSUP: Feature not supported
+ */
+int passive_scan_control(int8_t method);
+
+/**
+ * @brief Stop passive scanning
+ * 
+ * @return 0 on success, negative error code on failure
+ */
+int stop_passive_scan(void);
+
+/* ================== Test Setup Functions ================== */
+
+/**
+ * @brief Test parameter structure for setup functions
+ * 
+ * This structure contains all parameters needed to configure
+ * the BLE test modes (sender, scanner, numcast, envmon).
+ */
+typedef struct {
+    int8_t txpwr;              /**< TX power level configuration index */
+    uint8_t interval_idx;      /**< Advertising interval index */
+    uint8_t count_idx;         /**< Total count index for sender mode */
+    bool phy_2m;               /**< Enable 2M PHY */
+    bool phy_1m;               /**< Enable 1M PHY */
+    bool phy_s8;               /**< Enable Coded PHY (S=8) */
+    bool phy_ble4;             /**< Enable BLE 4.x legacy mode */
+    bool ignore_rcv_resp;      /**< Ignore received responses */
+    bool inhibit_ch37;         /**< Disable advertising channel 37 */
+    bool inhibit_ch38;         /**< Disable advertising channel 38 */
+    bool inhibit_ch39;         /**< Disable advertising channel 39 */
+    bool non_ANONYMOUS;        /**< Use non-anonymous advertising */
+    void *envmon_abort;        /**< Environment monitor abort callback */
+    void *sender_abort;        /**< Sender abort callback */
+    void *scanner_abort;       /**< Scanner abort callback */
+    void *numcast_abort;       /**< Number cast abort callback */
+} test_param_t;
+
+/**
+ * @brief Setup device as sender for packet loss test
+ * 
+ * This function configures the device to act as a transmitter
+ * in a BLE packet loss test scenario. It initializes advertising
+ * parameters, TX power, PHY selection, and starts advertising.
+ * 
+ * @param param Test parameters structure
+ * @return 0 on success, negative error code on failure
+ */
+int sender_setup(const test_param_t *param);
+
+/**
+ * @brief Setup device as scanner/receiver for packet loss test
+ * 
+ * This function configures the device to act as a receiver
+ * in a BLE packet loss test scenario. It initializes scanning
+ * parameters and starts passive scanning.
+ * 
+ * @param param Test parameters structure
+ * @return 0 on success, negative error code on failure
+ */
+int scanner_setup(const test_param_t *param);
+
+/**
+ * @brief Setup device for number casting mode
+ * 
+ * This function configures the device to broadcast numeric values
+ * using BLE advertising. Useful for broadcasting sensor data or
+ * status information.
+ * 
+ * @param param Test parameters structure
+ * @return 0 on success, negative error code on failure
+ */
+int numcast_setup(const test_param_t *param);
+
+/**
+ * @brief Setup device for environment monitoring mode
+ * 
+ * This function configures the device for passive environment
+ * monitoring, typically stopping all advertising and enabling
+ * scanning to monitor BLE traffic.
+ * 
+ * @param param Test parameters structure
+ * @return 0 on success, negative error code on failure
+ */
+int envmon_setup(const test_param_t *param);
+
 /* ================== Advertising Options and Flags ================== */
 
 /* Silicon Labs extended advertiser flags */
@@ -162,7 +294,7 @@ typedef struct __attribute__((__packed__)) {
     uint16_t flw_cnt;     /* Flow counter (10 heartbeat/min) */
     struct __attribute__((scalar_storage_order("big-endian"))) {
         uint64_t eui_64;  /* Device EUI-64 address */
-    };
+    } eui;                /* EUI-64 in big-endian format */
 } device_info_t;
 
 /**
@@ -312,20 +444,6 @@ const char* get_adv_device_name(uint8_t index);
 int set_adv_device_name(uint8_t index, const char *name);
 
 /**
- * @brief Set TX power for a specific advertising set (Silicon Labs)
- * 
- * Use this function to dynamically adjust TX power after advertising set creation.
- * If BT_LE_ADV_OPT_USE_TX_POWER is set in options, TX power will be included in
- * advertising packets.
- * 
- * @param index Advertising set index
- * @param power TX power in 0.1 dBm steps (e.g., 10 = 1 dBm, 55 = 5.5 dBm)
- * @param set_power Pointer to return the actual TX power set
- * @return 0 on success, negative error code on failure
- */
-int set_adv_tx_power(uint8_t index, int16_t power, int16_t *set_power);
-
-/**
  * @brief Get Silicon Labs advertiser flags from Nordic-style options
  * 
  * Converts Nordic BT_LE_ADV_OPT_* options to Silicon Labs flags.
@@ -348,6 +466,80 @@ uint8_t get_silabs_adv_flags(uint16_t nordic_options);
  */
 void get_phy_from_options(uint16_t nordic_options, uint8_t *primary_phy, uint8_t *secondary_phy);
 
+/**
+ * @brief Task type identifiers for mutual exclusion
+ * 
+ * These constants identify different test modes. The task management
+ * system ensures only one task type runs at a time.
+ */
+extern const int8_t sender_tgr;   /**< Sender mode task ID (1) */
+extern const int8_t scanner_tgr;  /**< Scanner mode task ID (2) */
+extern const int8_t numcst_tgr;   /**< Number cast mode task ID (3) */
+extern const int8_t envmon_tgr;   /**< Environment monitor task ID (4) */
+
+/**
+ * @brief Set or check sender task trigger
+ * 
+ * @param set Task control:
+ *            - Positive value: Start sender task (if no other task running)
+ *            - Negative value: Stop sender task (if currently running)
+ *            - Zero: Query current task status
+ * @return Current active task ID (0 = no task, 1 = sender, 2 = scanner, etc.)
+ */
+int8_t sender_task_tgr(int8_t set);
+
+/**
+ * @brief Get sender task status
+ * 
+ * @return 0 = idle, 1 = sender running, 2 = blocked by another task
+ */
+int8_t sender_task_status(void);
+
+/**
+ * @brief Set or check scanner task trigger
+ * 
+ * @param set Task control (positive=start, negative=stop, zero=query)
+ * @return Current active task ID
+ */
+int8_t scanner_task_tgr(int8_t set);
+
+/**
+ * @brief Get scanner task status
+ * 
+ * @return 0 = idle, 1 = scanner running, 2 = blocked by another task
+ */
+int8_t scanner_task_status(void);
+
+/**
+ * @brief Set or check number cast task trigger
+ * 
+ * @param set Task control (positive=start, negative=stop, zero=query)
+ * @return Current active task ID
+ */
+int8_t numcst_task_tgr(int8_t set);
+
+/**
+ * @brief Get number cast task status
+ * 
+ * @return 0 = idle, 1 = numcast running, 2 = blocked by another task
+ */
+int8_t numcst_task_status(void);
+
+/**
+ * @brief Set or check environment monitor task trigger
+ * 
+ * @param set Task control (positive=start, negative=stop, zero=query)
+ * @return Current active task ID
+ */
+int8_t envmon_task_tgr(int8_t set);
+
+/**
+ * @brief Get environment monitor task status
+ * 
+ * @return 0 = idle, 1 = envmon running, 2 = blocked by another task
+ */
+int8_t envmon_task_status(void);
+
 /* ================== Platform-Specific Callbacks ================== */
 
 /**
@@ -359,7 +551,7 @@ void get_phy_from_options(uint16_t nordic_options, uint8_t *primary_phy, uint8_t
  * @param adv_handle Advertising handle/set that sent the packet
  * @param num_sent Number of advertising packets sent
  */
-void adv_sent_callback(adv_handle_t *adv_handle, uint16_t num_sent);
+//void adv_sent_callback(adv_handle_t *adv_handle, uint16_t num_sent);
 
 /**
  * @brief Finalize sender (application-specific)
@@ -373,3 +565,106 @@ void sender_finit(void);
 #endif
 
 #endif /* __losstst_svc_H__ */
+
+/* ================== Public Functions ================== */
+
+/**
+ * @brief Initialize the advertising port module
+ * 
+ * This function must be called before any other advertising functions.
+ * It initializes internal data structures and prepares the advertising system.
+ * 
+ * @param device_address Platform-specific device address (e.g., MAC address)
+ *                       Pass NULL to use platform default
+ * @return 0 on success, negative error code on failure
+ */
+int update_adv_port_init(const uint8_t *device_address);
+
+int complete_system_init(void);
+
+/* ================== Status Message Generation (Application Layer) ================== */
+
+/**
+ * @brief Test statistics structure for peek messages
+ * 
+ * This structure holds runtime statistics for generating
+ * status broadcast messages.
+ */
+typedef struct {
+    uint16_t sub_total_snd_2m;    /**< Total packets sent on 2M PHY */
+    uint16_t sub_total_snd_1m;    /**< Total packets sent on 1M PHY */
+    uint16_t sub_total_snd_s8;    /**< Total packets sent on Coded PHY */
+    uint16_t sub_total_snd_ble4;  /**< Total packets sent on BLE 4.x */
+    uint16_t sub_total_rcv[4];    /**< Total packets received per PHY */
+    uint16_t round_total_num;      /**< Target total packet count */
+    int8_t round_tx_pwr;           /**< Current TX power (dBm) */
+    bool round_phy_sel[4];         /**< PHY selection flags */
+} peek_stats_t;
+
+/**
+ * @brief Reception statistics structure
+ * 
+ * Per-PHY reception statistics for scanner peek messages.
+ */
+typedef struct {
+    uint16_t  node;
+	uint8_t  pri_phy;
+	uint8_t  sec_phy;
+	int8_t   tx_pwr;
+	uint16_t flow;
+	uint16_t subtotal;
+	int16_t  rssi;
+	int16_t  rssi_upper;
+	int16_t  rssi_lower;
+	unsigned det_sender:1;
+	unsigned dump_rcvinfo:1;
+	unsigned complete:1;
+	unsigned notified:1;
+} recv_stats_t;
+
+typedef struct __attribute__((__packed__)) {
+	recv_stats_t rec;
+	int rssi_acc;
+	int rssi_idx;
+} rcv_stamp_t;
+
+/**
+ * @brief Generate sender status messages
+ * 
+ * This function generates status broadcast messages for sender mode,
+ * including packet counts, PHY types, and TX power information.
+ * The generated messages are stored in peek_msg_str[] buffers.
+ * 
+ * Requires application-provided global variables:
+ * - sub_total_snd_2m, sub_total_snd_1m, sub_total_snd_s8, sub_total_snd_ble4
+ * - round_phy_sel[4]
+ * - round_total_num
+ * - round_tx_pwr
+ * - device_address[0]
+ */
+void sender_peek_msg(void);
+
+/**
+ * @brief Generate scanner status messages
+ * 
+ * This function generates status broadcast messages for scanner mode,
+ * including reception counts, RSSI ranges, and remote TX power.
+ * 
+ * Requires application-provided global variables:
+ * - rec_sets[4]
+ * - sub_total_rcv[4]
+ * - peek_rcv_rssi[4][3]
+ * - remote_tx_pwr[4]
+ */
+void scanner_peek_msg(void);
+
+/**
+ * @brief Get pointer to peek message buffer
+ * 
+ * Returns the internal peek message buffer for a specific PHY index.
+ * These buffers contain the formatted status messages.
+ * 
+ * @param index PHY index (0=2M, 1=1M, 2=Coded, 3=BLE4)
+ * @return Pointer to message buffer (64 bytes), NULL if invalid index
+ */
+const char* get_peek_msg_buffer(uint8_t index);

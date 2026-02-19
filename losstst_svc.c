@@ -14,6 +14,8 @@
 /* Silicon Labs SDK headers */
 #include "sl_status.h"
 #include "sl_bt_api.h"
+#include "gatt_db.h"
+#include "sl_sleeptimer.h"
 
 /* ================== Debug Configuration ================== */
 #define CHK_UPDATE_ADV_PROCEDURE 0  /* Set to 1 to enable debug prints */
@@ -154,11 +156,18 @@ static const adv_param_t *non_connectable_adv_param_x[][4] ={
 		,FIXED_BT_LE_ADV_PARAM(4,ADV_OPT_IDX_3, PARAM_ADV_INT_MIN_10, PARAM_ADV_INT_MAX_10, NULL)}
 };
 static uint32_t adv_param_mask[2];
-static bool rc_party;
+static const adv_start_param_t p_adv_default_start_param[]=BT_LE_EXT_ADV_START_PARAM(0, 0);
 static const adv_start_param_t p_adv_finit_start_param[]=BT_LE_EXT_ADV_START_PARAM(300,0);
 static const adv_start_param_t p_adv_1sec_start_param[]=BT_LE_EXT_ADV_START_PARAM(100,0);
 static const adv_start_param_t p_adv_5sec_start_param[]=BT_LE_EXT_ADV_START_PARAM(500,0);
 static const adv_start_param_t p_adv_burst_start_param[]=BT_LE_EXT_ADV_START_PARAM(0,LOSS_TEST_BURST_COUNT);
+
+const int8_t sender_tgr=1;
+const int8_t scanner_tgr=2;
+const int8_t numcst_tgr=3;
+const int8_t envmon_tgr=4;
+
+static int8_t losstst_task_val;
 
 /* Initialization flag */
 static bool svc_init_success = false;
@@ -193,6 +202,9 @@ static device_info_bt4_t device_info_bt4_form = {
     .device_info = {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255}
 };
 
+static device_info_bt4_t numcast_bt4_form;
+static device_info_t remote_resp_form[4]={{.man_id=0},{.man_id=0},{.man_id=0},{.man_id=0}};
+
 static numcast_info_t numcast_info_form = {MANUFACTURER_ID, LOSS_TEST_FORM_ID};
 static uint16_t *const p_number_cast_form = (uint16_t *)&numcast_info_form.number_cast_form;
 
@@ -209,13 +221,154 @@ static char peek_msg_str[4][64];
 /* Platform-specific advertising handles */
 static adv_handle_t ext_adv[MAX_ADV_SETS];
 
-/* Default advertising start parameters */
-static const adv_start_param_t p_adv_default_start_param = {
-    .timeout = 0,      /* 0 = no timeout, advertise continuously */
-    .num_events = 0    /* 0 = no limit on advertising events */
+/* PHY type string mappings */
+static const char *pri_phy_typ[] = {
+    "NA",  /* 0x00 */
+    "1M",  /* 0x01 */
+    "NA",  /* 0x02 */
+    "S8",  /* 0x03 Coded PHY S=8 */
+    "S2",  /* 0x04 Coded PHY S=2 */
+    "NA"   /* 0x05 */
 };
 
+static const char *sec_phy_typ[] = {
+    "NA",  /* 0x00 */
+    "1M",  /* 0x01 */
+    "2M",  /* 0x02 */
+    "S8",  /* 0x03 Coded PHY S=8 */
+    "S2",  /* 0x04 Coded PHY S=2 */
+    "NA"   /* 0x05 */
+};
+
+/* Message format strings */
+static const char *peek_sndpkt_form = "\\xff\\xffSND:%03u P:%s/%s R:%u/%u T:%d";
+static const char *peek_sndpkt_btv4_form = "\\xff\\xffSND:%03u P:%s%s R:%u/%u T:%d";
+static const char *peek_rcvpkt_form = "\\xff\\xffRCV:%03u P:%s/%s R:%u/%u S:%s(%s..%s) T:%s";
+static const char *peek_rcvpkt_btv4_form = "\\xff\\xffRCV:%03u P:%s%s R:%u/%u S:%s(%s..%s) T:%s";
+
+uint16_t sub_total_snd_2m, sub_total_snd_1m, sub_total_snd_s8, sub_total_snd_ble4;
+uint16_t round_total_num;
+int8_t round_tx_pwr;
+
+recv_stats_t rec_sets[4];
+uint16_t sub_total_rcv[4];
+int8_t peek_rcv_rssi[4][3];
+int8_t remote_tx_pwr[4];
+
+uint16_t round_total_num;       /**< Target total packet count */
+int8_t round_tx_pwr;            /**< Current TX power (d
+ner mode variables (required by scanner_peek_msg) */
+recv_stats_t rec_sets[4];       /**< Reception statistics for 4 PHYs */
+uint16_t sub_total_rcv[4];      /**< Total packets received per PHY */
+int8_t peek_rcv_rssi[4][3];     /**< RSSI [PHY][cur/min/max] */
+int8_t remote_tx_pwr[4];        /**< Remote device TX power per 
+tional variables required by setup functions */
+uint8_t round_adv_param_index;  /**< Advertising parameter index */
+uint16_t enum_total_num[]={500,1000,2000,5000,10000,20000,50000};   /**< Total packet count enumeration */
+bool ignore_rcv_resp;           /**< Ignore received responses flag */
+bool inhibit_ch37;              /**< Inhibit advertising channel 37 */
+bool inhibit_ch38;              /**< Inhibit advertising channel 38 */
+bool inhibit_ch39;              /**< Inhibit advertising channel 39 */
+bool non_ANONYMOUS;             /**< Non-anonymous advertising flag */
+void *envmon_abort_p;           /**< Environment monitor abort callback */
+void *sender_abort_p;           /**< Sender abort callback */
+void *scanner_abort_p;          /**< Scanner abort callback */
+void *numcast_abort_p;          /**< Number cast abort callback */
+bool scanner_inactive;          /**< Scanner inactive flag */
+uint64_t number_cast_val;       /**< Number cast value */
+uint64_t number_cast_rxval;     /**< Number cast received value */
+bool number_cast_auto;          /**< Number cast auto mode flag */
+static int16_t precnt_rcv[4];
+
+volatile bool ack_remote_resp[4];  // 远程响应ACK
+// scr input val
+static uint16_t xmt_ratio_val[4][2];
+static uint16_t rcv_ratio_val[4][2];
+static int8_t rcv_rssi_val[4][3];
+static int8_t rcv_state_val[4];
+static int8_t snd_state_val[4];
+static uint32_t rcv_stats[4];
+static uint32_t env_stats[4];
+static uint16_t sndr_id;
+static int8_t sndr_txpower;
+static char rcv_msg_str[3][80];
+
+static const uint16_t value_interval[][2]={
+	{VALUE_ADV_INT_MIN_0, VALUE_ADV_INT_MAX_0}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1)
+	{VALUE_ADV_INT_MIN_1, VALUE_ADV_INT_MAX_1}, 
+	{VALUE_ADV_INT_MIN_2, VALUE_ADV_INT_MAX_2}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1376 ; TGAP(adv_fast_interval1_coded)
+	{VALUE_ADV_INT_MIN_3, VALUE_ADV_INT_MAX_3}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2)
+	{VALUE_ADV_INT_MIN_4, VALUE_ADV_INT_MAX_4},
+	{VALUE_ADV_INT_MIN_5, VALUE_ADV_INT_MAX_5}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_fast_interval2_coded)
+	{VALUE_ADV_INT_MIN_6, VALUE_ADV_INT_MAX_6},
+	{VALUE_ADV_INT_MIN_7, VALUE_ADV_INT_MAX_7},
+	{VALUE_ADV_INT_MIN_8, VALUE_ADV_INT_MAX_8}, //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval)
+	{VALUE_ADV_INT_MIN_9, VALUE_ADV_INT_MAX_9},
+	{VALUE_ADV_INT_MIN_10,VALUE_ADV_INT_MAX_10} //BLUETOOTH CORE SPEC 5.4, Vol 3, Part C, p.1377 ; TGAP(adv_slow_interval_coded)
+	//,{VALUE_ADV_INT_MIN_n1, VALUE_ADV_INT_MAX_n1}
+	//,{VALUE_ADV_INT_MIN_n2, VALUE_ADV_INT_MAX_n2}
+	//,{VALUE_ADV_INT_MIN_n3, VALUE_ADV_INT_MAX_n3}
+};
+
+int64_t platform_uptime_get(void) {
+    // 使用64位 tick 计数（避免溢出）
+    uint64_t ticks = sl_sleeptimer_get_tick_count64();
+    uint64_t ms = 0;
+    sl_sleeptimer_tick64_to_ms(ticks, &ms);
+    return (int64_t)ms;
+}
+
 /* ================== Platform Abstraction Functions ================== */
+
+/**
+ * @brief Helper: Convert RSSI value to string
+ * 
+ * @param rssi RSSI value (-128 to 127)
+ * @param str_p Output string buffer (must be at least 5 bytes)
+ * @return Pointer to string (empty if invalid RSSI)
+ */
+static char* rssi_toa(int16_t rssi, char *str_p)
+{
+    if (str_p == NULL) {
+        static char empty[] = "\\0";
+        return empty;
+    }
+    
+    /* Check for invalid RSSI (out of int8_t range) */
+    if (rssi >= INT8_MAX || rssi <= INT8_MIN) {
+        *str_p = '\0';
+    } else {
+        /* Convert to string (max 5 bytes: "-128" + null) */
+        snprintf(str_p, 8, "%d", (int)rssi);
+    }
+    
+    return str_p;
+}
+
+/**
+ * @brief Helper: Convert TX power value to string
+ * 
+ * @param pwr TX power value (-128 to 127)
+ * @param str_p Output string buffer (must be at least 5 bytes)
+ * @return Pointer to string (empty if invalid power)
+ */
+static char* txpwr_toa(int8_t pwr, char *str_p)
+{
+    if (str_p == NULL) {
+        static char empty[] = "\0";
+        return empty;
+    }
+    
+    /* Check for invalid power (INT8_MAX used as "not set") */
+    if (pwr == INT8_MAX) {
+        *str_p = '\0';
+    } else {
+        /* Convert to string (max 5 bytes: "-128" + null) */
+        snprintf(str_p, 8, "%d", (int)pwr);
+    }
+    
+    return str_p;
+}
 
 /**
  * @brief Convert advertising options to Silicon Labs flags
@@ -271,10 +424,8 @@ static int platform_create_adv_set(const adv_param_t *param,
 {
         sl_status_t status;
         uint8_t primary_phy, secondary_phy;
-        uint8_t sl_flags;
         bool use_extended_adv;
         bool use_legacy_adv;
-        int16_t actual_tx_power;
         
         // Step 1: Create advertising set
         status = sl_bt_advertiser_create_set(handle);
@@ -310,10 +461,7 @@ static int platform_create_adv_set(const adv_param_t *param,
                 return -EIO;
             }
             
-            // Get flags (anonymous, tx_power)
-            sl_flags = get_silabs_adv_flags(param->options);
-            
-            // Note: flags will be used in platform_start_adv()
+            // Note: Flags (anonymous, tx_power) will be applied when starting advertising
             
         } else if (use_legacy_adv) {
             // Legacy (BT4) advertising - no PHY setting needed
@@ -338,7 +486,6 @@ static int platform_create_adv_set(const adv_param_t *param,
     {
         sl_status_t status;
         uint8_t primary_phy, secondary_phy;
-        int16_t actual_tx_power;
         bool use_extended_adv;
         
         // Update timing
@@ -397,13 +544,12 @@ static int platform_create_adv_set(const adv_param_t *param,
      * Needs access to options to determine extended vs legacy and flags.
      */
     static int platform_start_adv(adv_handle_t handle,
-                                  const adv_start_param_t *param,
+                                  //const adv_start_param_t *param,
                                   uint16_t options)
     {
         sl_status_t status;
         bool use_extended_adv = (options & BT_LE_ADV_OPT_EXT_ADV) != 0;
         bool is_connectable = (options & BT_LE_ADV_OPT_CONNECTABLE) != 0;
-        uint8_t discoverable = sl_bt_advertiser_non_discoverable;
         uint8_t sl_flags;
         
         if (use_extended_adv) {
@@ -480,11 +626,28 @@ static void init_device_names(void)
     /* Generate device names based on device address */
     uint8_t node_id = device_address[0];
     
-    sprintf(adv_dev_nm[0], "LossTst(%03u)", node_id);
-    sprintf(adv_dev_nm[1], "LossTst(%03u)", node_id);
-    sprintf(adv_dev_nm[2], "LossTst(%03u)", node_id);
-    sprintf(adv_dev_nm[3], "LossTst%03u", node_id);
-    sprintf(adv_dev_nm[4], "%s(PEEK %03u)", DEFAULT_DEVICE_NAME, node_id);
+    /* Read device name from GATT database */
+    char gatt_device_name[32] = {0};
+    size_t gatt_name_len = 0;
+    sl_status_t status = sl_bt_gatt_server_read_attribute_value(
+        gattdb_device_name,
+        0,
+        sizeof(gatt_device_name) - 1,
+        &gatt_name_len,
+        (uint8_t*)gatt_device_name
+    );
+    
+    /* Use GATT device name if available, otherwise use default */
+    const char *base_name = (status == SL_STATUS_OK && gatt_name_len > 0) 
+                            ? gatt_device_name 
+                            : "Turnkey LossTest";
+    
+    snprintf(adv_dev_nm[0], sizeof(adv_dev_nm[0]), "LossTst(%03u)", node_id);
+    snprintf(adv_dev_nm[1], sizeof(adv_dev_nm[1]), "LossTst(%03u)", node_id);
+    snprintf(adv_dev_nm[2], sizeof(adv_dev_nm[2]), "LossTst(%03u)", node_id);
+    snprintf(adv_dev_nm[3], sizeof(adv_dev_nm[3]), "LossTst%03u", node_id);
+    /* Limit base_name to 19 chars to fit "(PEEK 999)" in 31-byte buffer */
+    snprintf(adv_dev_nm[4], sizeof(adv_dev_nm[4]), "%.19s(PEEK %03u)", base_name, node_id);
     
     /* Initialize number cast form */
     memcpy(p_number_cast_form, device_address, 
@@ -702,12 +865,12 @@ int update_adv(uint8_t index,
     
     /* ========== Start advertising ========== */
     if (!ext_adv_status[index].start || adv_start_param != NULL) {
-        const adv_start_param_t *start_param = adv_start_param 
-                                             ? adv_start_param 
-                                             : &p_adv_default_start_param;
+        // const adv_start_param_t *start_param = adv_start_param 
+        //                                      ? adv_start_param 
+        //                                      : &p_adv_default_start_param;
         
         /* Silicon Labs needs options to determine extended/legacy and flags */
-        err = platform_start_adv(ext_adv[index], start_param, 
+        err = platform_start_adv(ext_adv[index],// start_param, 
                                 stored_adv_params[index].options);
         
         if (err) {
@@ -768,45 +931,1401 @@ int set_adv_device_name(uint8_t index, const char *name)
     return 0;
 }
 
-void adv_sent_callback(adv_handle_t *adv_handle, uint16_t num_sent)
-{
-    /* Platform-specific callback handler */
-    /* This can be used to track advertising packet transmission */
-    DEBUG_PRINT("Adv sent: %d packets\n", num_sent);
-}
+// void adv_sent_callback(adv_handle_t *adv_handle, uint16_t num_sent)
+// {
+//     /* Platform-specific callback handler */
+//     /* This can be used to track advertising packet transmission */
+//     DEBUG_PRINT("Adv sent: %d packets\n", num_sent);
+// }
 
-int set_adv_tx_power(uint8_t index, int16_t power, int16_t *set_power)
+/* ================== TX Power Control Implementation ================== */
+
+int set_adv_tx_power(int8_t tx_power_dbm, uint8_t num_handles)
 {
-    if (index >= MAX_ADV_SETS) {
+    if (!svc_init_success) {
+        return -EAGAIN;
+    }
+    
+    if (num_handles > MAX_ADV_SETS) {
         return -EINVAL;
     }
     
-    if (!ext_adv_status[index].initialized) {
-        return -EPERM;  /* Advertising set not created yet */
+    int err = 0;
+    
+    /* Silicon Labs implementation using system API */
+    /* Example implementation: */
+    sl_status_t status;
+    int16_t set_min, set_max;
+    
+    // Convert dBm to 0.1dBm units for Silicon Labs
+    set_min = tx_power_dbm * 10;
+    set_max = tx_power_dbm * 10;
+    
+    // Set TX power for advertising
+    status = sl_bt_system_set_tx_power(
+        set_min,
+        set_max,
+        &set_min,  // Returns actual min set
+        &set_max   // Returns actual max set
+    );
+    
+    if (status != SL_STATUS_OK) {
+        return -EIO;
     }
     
-    /* Silicon Labs implementation */
-    sl_status_t status;
-    status = sl_bt_advertiser_set_tx_power(ext_adv[index], power, set_power);
-    return (status == SL_STATUS_OK) ? 0 : -EIO;
+    DEBUG_PRINT("TX Power set: requested=%d.%ddBm, actual=%d.%ddBm\n",
+               tx_power_dbm, 0, set_max / 10, set_max % 10);
+    
+    
+    return err;
+}
+
+/* ================== Scanner Control Implementation ================== */
+
+int passive_scan_control(int8_t method)
+{
+    if (!svc_init_success) {
+        return -EAGAIN;
+    }
+    
+    static int8_t scan_method = -1;
+    int err = 0;
+    
+    /* Silicon Labs implementation using sl_bt_scanner API */
+    //Example implementation:
+     sl_status_t status;
+     uint8_t scanning_phy;
+     
+     if (method < 0) {
+         // Stop scanning
+         status = sl_bt_scanner_stop();
+         scan_method = -1;
+         return (status == SL_STATUS_OK) ? 0 : -EIO;
+     }
+     
+     if (method != scan_method) {
+         // Stop current scanning
+         sl_bt_scanner_stop();
+         
+         // Determine PHY to scan
+         switch (method) {
+             case 0:  // All PHYs
+                 scanning_phy = sl_bt_scanner_scan_phy_1m_and_coded;
+                 break;
+             case 1:  // 1M only
+                 scanning_phy = sl_bt_scanner_scan_phy_1m;
+                 break;
+             case 2:  // Coded only
+                 scanning_phy = sl_bt_scanner_scan_phy_coded;
+                 break;
+             default:
+                 scanning_phy = sl_bt_scanner_scan_phy_1m;
+                 break;
+         }
+         
+         // Start scanning
+         status = sl_bt_scanner_start(
+             scanning_phy,
+             sl_bt_scanner_discover_observation  // Passive scanning
+         );
+         
+         if (status != SL_STATUS_OK) {
+             return -EIO;
+         }
+         
+         scan_method = method;
+     }
+
+     return err;
+}
+
+int stop_passive_scan(void)
+{
+    return passive_scan_control(-1);
+}
+
+/* ================== Test Setup Functions Implementation ================== */
+
+/* 
+ * Note: These setup functions depend on application-specific global variables
+ * and callbacks. The implementations below provide the portable platform-specific
+ * operations. Applications must provide the following:
+ * 
+ * - Global variables: round_tx_pwr, round_phy_sel[], device_info_form[], etc.
+ * - Callback functions: sender_peek_msg(), scanner_peek_msg(), etc.
+ * - Helper functions: get_txpower_sv(), get_txpower_effect(), blocking_adv(), etc.
+ * 
+ * The implementations here show the structure and platform-specific calls.
+ */
+
+int sender_setup(const test_param_t *param)
+{
+    if (!svc_init_success || param == NULL) {
+        return -EINVAL;
+    }
+    
+    int err = 0;
+    
+    /* Initialize application layer variables */
+    round_tx_pwr = param->txpwr;
+    round_adv_param_index = param->interval_idx;
+    round_phy_sel[0] = param->phy_2m;
+    round_phy_sel[1] = param->phy_1m;
+    round_phy_sel[2] = param->phy_s8;
+    round_phy_sel[3] = param->phy_ble4;
+    
+    /* Reset device info structures */
+    device_info_form[0].pre_cnt = INT16_MIN;
+    device_info_form[0].flw_cnt = 0;
+    device_info_form[1].pre_cnt = INT16_MIN;
+    device_info_form[1].flw_cnt = 0;
+    device_info_form[2].pre_cnt = INT16_MIN;
+    device_info_form[2].flw_cnt = 0;
+    device_info_form[3].pre_cnt = INT16_MIN;
+    device_info_form[3].flw_cnt = 0;
+    device_info_bt4_form.device_info = device_info_form[3];
+    
+    /* Reset transmission counters */
+    sub_total_snd_2m = 0;
+    sub_total_snd_1m = 0;
+    sub_total_snd_s8 = 0;
+    sub_total_snd_ble4 = 0;
+    
+    /* Initialize total packet count from parameter */
+    uint16_t total_num = enum_total_num[param->count_idx];
+    round_total_num = total_num;
+    
+    /* Setup transmission ratio values */
+    memset(xmt_ratio_val, 0, sizeof(xmt_ratio_val));
+    if (round_phy_sel[0]) xmt_ratio_val[0][1] = total_num;
+    if (round_phy_sel[1]) xmt_ratio_val[1][1] = total_num;
+    if (round_phy_sel[2]) xmt_ratio_val[2][1] = total_num;
+    if (round_phy_sel[3]) xmt_ratio_val[3][1] = total_num;
+    
+    /* Set other config flags */
+    ignore_rcv_resp = param->ignore_rcv_resp;
+    inhibit_ch37 = param->inhibit_ch37;
+    inhibit_ch38 = param->inhibit_ch38;
+    inhibit_ch39 = param->inhibit_ch39;
+    non_ANONYMOUS = param->non_ANONYMOUS;
+    
+    /* Store abort callbacks */
+    envmon_abort_p = param->envmon_abort;
+    sender_abort_p = param->sender_abort;
+    scanner_abort_p = param->scanner_abort;
+    numcast_abort_p = param->numcast_abort;
+    
+    /* Generate initial status message */
+    sender_peek_msg();
+    
+    /* Set TX power for all advertising handles */
+    err = set_adv_tx_power(param->txpwr, 4);
+    if (err) {
+        DEBUG_PRINT("sender_setup: TX power set failed: %d\n", err);
+        return err;
+    }
+    
+    /* Start advertising on selected PHYs */
+    /* PHY index mapping: 0=2M, 1=1M, 2=Coded(S8), 3=BLE4 */
+    if (param->phy_2m) {
+        err = update_adv(0, NULL, NULL, NULL);
+        if (err) {
+            DEBUG_PRINT("sender_setup: PHY 2M adv failed\n");
+        }
+    }
+    
+    if (param->phy_1m) {
+        err = update_adv(1, NULL, NULL, NULL);
+        if (err) {
+            DEBUG_PRINT("sender_setup: PHY 1M adv failed\n");
+        }
+    }
+    
+    if (param->phy_s8) {
+        err = update_adv(2, NULL, NULL, NULL);
+        if (err) {
+            DEBUG_PRINT("sender_setup: PHY Coded adv failed\n");
+        }
+    }
+    
+    if (param->phy_ble4) {
+        err = update_adv(3, NULL, NULL, NULL);
+        if (err) {
+            DEBUG_PRINT("sender_setup: BLE4 adv failed\n");
+        }
+    }
+    
+    /* Build advertising parameter masks based on configuration flags */
+    /* adv_param_mask[0]: bits to clear (using & ~mask) */
+    /* adv_param_mask[1]: bits to set (using | mask) */
+    adv_param_mask[0] = 0;
+    adv_param_mask[1] = 0;
+    
+    /* Handle non_ANONYMOUS flag: if true, clear ANONYMOUS option */
+    if (non_ANONYMOUS) {
+        adv_param_mask[0] |= BT_LE_ADV_OPT_ANONYMOUS;
+    }
+    
+    /* Note: Silicon Labs handles channel selection differently.
+     * inhibit_ch37/38/39 flags would need platform-specific API:
+     * sl_bt_advertiser_set_channel_map() for legacy advertising
+     * Channel mask: 0x07 = all channels (37, 38, 39)
+     *              0x06 = channels 38, 39 (inhibit ch37)
+     *              0x05 = channels 37, 39 (inhibit ch38)
+     *              0x03 = channels 37, 38 (inhibit ch39)
+     * This should be implemented in platform_create_adv_set() or
+     * platform_update_adv_param() if needed.
+     */
+
+    /* Start passive scanning */
+    err = passive_scan_control(0);
+    if (err) {
+        DEBUG_PRINT("sender_setup: Scan start failed: %d\n", err);
+    }
+    
+    DEBUG_PRINT("Sender setup complete (TX power: %d dBm)\n", param->txpwr);
+    
+    return 0;
+}
+
+int scanner_setup(const test_param_t *param)
+{
+    if (!svc_init_success || param == NULL) {
+        return -EINVAL;
+    }
+    
+    int err = 0;
+    
+    /* Initialize application layer variables */
+    round_tx_pwr = param->txpwr;
+    round_adv_param_index = param->interval_idx;
+    round_phy_sel[0] = param->phy_2m;
+    round_phy_sel[1] = param->phy_1m;
+    round_phy_sel[2] = param->phy_s8;
+    round_phy_sel[3] = param->phy_ble4;
+    
+    /* Reset all counters */
+    sub_total_snd_2m = 0;
+    sub_total_snd_1m = 0;
+    sub_total_snd_s8 = 0;
+    sub_total_snd_ble4 = 0;
+    sub_total_rcv[0] = 0;
+    sub_total_rcv[1] = 0;
+    sub_total_rcv[2] = 0;
+    sub_total_rcv[3] = 0;
+    
+    /* Reset reception statistics */
+    memset(rec_sets, 0, sizeof(rec_sets));
+    
+    /* Set config flags */
+    ignore_rcv_resp = param->ignore_rcv_resp;
+    inhibit_ch37 = param->inhibit_ch37;
+    inhibit_ch38 = param->inhibit_ch38;
+    inhibit_ch39 = param->inhibit_ch39;
+    non_ANONYMOUS = param->non_ANONYMOUS;
+    
+    /* Store abort callbacks */
+    envmon_abort_p = param->envmon_abort;
+    sender_abort_p = param->sender_abort;
+    scanner_abort_p = param->scanner_abort;
+    numcast_abort_p = param->numcast_abort;
+    
+    /* Set scanner inactive flag */
+    extern bool scanner_inactive;
+    scanner_inactive = true;
+    
+    /* Generate initial status message */
+    scanner_peek_msg();
+    
+    /* Set TX power for potential response advertising */
+    err = set_adv_tx_power(param->txpwr, 4);
+    if (err) {
+        DEBUG_PRINT("scanner_setup: TX power set failed: %d\n", err);
+        return err;
+    }
+    
+    /* Start passive scanning */
+    err = passive_scan_control(0);
+    if (err) {
+        DEBUG_PRINT("scanner_setup: Scan start failed: %d\n", err);
+        return err;
+    }
+    
+    DEBUG_PRINT("Scanner setup complete\n");
+    
+    return 0;
+}
+
+int numcast_setup(const test_param_t *param)
+{
+    if (!svc_init_success || param == NULL) {
+        return -EINVAL;
+    }
+    
+    int err = 0;
+    
+    /* Initialize application layer variables */
+    round_adv_param_index = param->interval_idx;
+    round_phy_sel[0] = param->phy_2m;
+    round_phy_sel[1] = param->phy_1m;
+    round_phy_sel[2] = param->phy_s8;
+    round_phy_sel[3] = param->phy_ble4;
+    
+    /* Initialize number cast value */
+    extern uint64_t number_cast_val;
+    number_cast_val = *(uint64_t *)p_number_cast_form;
+    
+    /* Set config flags */
+    inhibit_ch37 = param->inhibit_ch37;
+    inhibit_ch38 = param->inhibit_ch38;
+    inhibit_ch39 = param->inhibit_ch39;
+    non_ANONYMOUS = param->non_ANONYMOUS;
+    
+    /* Store abort callbacks */
+    envmon_abort_p = param->envmon_abort;
+    sender_abort_p = param->sender_abort;
+    scanner_abort_p = param->scanner_abort;
+    numcast_abort_p = param->numcast_abort;
+    
+    /* Set TX power */
+    err = set_adv_tx_power(param->txpwr, 4);
+    if (err) {
+        DEBUG_PRINT("numcast_setup: TX power set failed: %d\n", err);
+        return err;
+    }
+    
+    /* Stop all advertising first (blocking mode) */
+    err = stop_all_advertising();
+    if (err) {
+        DEBUG_PRINT("numcast_setup: Stop advertising failed: %d\n", err);
+    }
+    
+    /* Determine scan method based on PHY selection */
+    int8_t scan_method;
+    if (param->phy_s8 && (param->phy_ble4 || param->phy_1m || param->phy_2m)) {
+        scan_method = 0;  /* All PHYs */
+    } else if (param->phy_s8) {
+        scan_method = 2;  /* Coded PHY only */
+    } else {
+        scan_method = 1;  /* 1M PHY only */
+    }
+    
+    /* Start passive scanning */
+    err = passive_scan_control(scan_method);
+    if (err) {
+        DEBUG_PRINT("numcast_setup: Scan start failed: %d\n", err);
+    }
+    
+    /* Initialize number cast control variables */
+    extern uint64_t number_cast_rxval;
+    extern bool number_cast_auto;
+    number_cast_rxval = UINT64_MAX;
+    number_cast_auto = false;
+    
+    DEBUG_PRINT("Number cast setup complete (scan method: %d)\n", scan_method);
+    
+    return 0;
+}
+
+int envmon_setup(const test_param_t *param)
+{
+    if (!svc_init_success || param == NULL) {
+        return -EINVAL;
+    }
+    
+    int err = 0;
+    
+    /* Stop all advertising */
+    err = stop_all_advertising();
+    if (err) {
+        DEBUG_PRINT("envmon_setup: Stop advertising failed: %d\n", err);
+    }
+    
+    /* Start passive scanning */
+    err = passive_scan_control(0);
+    if (err) {
+        DEBUG_PRINT("envmon_setup: Scan start failed: %d\n", err);
+    }
+    
+    DEBUG_PRINT("Environment monitor setup complete\n");
+    
+    return 0;
+}
+
+/* ================== Complete Initialization (losstst_init port) ================== */
+
+int ble_test_init(bool auto_start_scan, bool auto_start_adv)
+{
+    int err = 0;
+    
+    /* Check if already initialized */
+    if (svc_init_success) {
+        DEBUG_PRINT("Already initialized\n");
+        return -EPERM;
+    }
+    
+    /* ========== Silicon Labs Platform Initialization ========== */
+    
+    /* Note: Bluetooth stack is typically initialized by Simplicity SDK
+     * before main() is called, via sl_system_init() */
+    
+    /* Get device address */
+    bd_addr address;
+    uint8_t address_type;
+    sl_status_t status = sl_bt_system_get_identity_address(&address, &address_type);
+    if (status == SL_STATUS_OK) {
+        memcpy(device_address, address.addr, 6);
+        /* Pad with zeros for EUI-64 format */
+        device_address[6] = 0x00;
+        device_address[7] = 0x00;
+        DEBUG_PRINT("Device address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                   address.addr[5], address.addr[4], address.addr[3],
+                   address.addr[2], address.addr[1], address.addr[0]);
+    } else {
+        DEBUG_PRINT("Failed to get identity address: 0x%04X\n", status);
+        return -EIO;
+    }
+    
+    /* Silicon Labs doesn't need explicit advertising set config check
+     * as it's handled dynamically by the stack */
+    num_adv_set = MAX_ADV_SETS;
+    
+    /* ========== Platform-Independent Initialization ========== */
+    
+    /* Initialize advertising data structures */
+    /* Note: These would typically be initialized by application-specific
+     * callback functions like sender_peek_msg() in the original code */
+    
+    /* Set device EUI-64 in all device info structures */
+    uint64_t eui64 = *(uint64_t *)device_address;
+    device_info_form[0].eui.eui_64 = eui64;
+    device_info_form[1].eui.eui_64 = eui64;
+    device_info_form[2].eui.eui_64 = eui64;
+    device_info_form[3].eui.eui_64 = eui64;
+    device_info_bt4_form.device_info.eui.eui_64 = eui64;
+    
+    /* Mark as initialized */
+    svc_init_success = true;
+    DEBUG_PRINT("Service initialization complete\n");
+    
+    /* Initialize all advertising sets if requested */
+    if (auto_start_adv) {
+        DEBUG_PRINT("Initializing advertising sets...\n");
+        for (uint8_t i = 0; i < num_adv_set; i++) {
+            /* Use different timeout for index 4 (remote control) */
+            const adv_start_param_t *start_param = (i == 4) ? 
+                p_adv_default_start_param :  /* Continuous */
+                p_adv_finit_start_param;     /* 3 seconds */
+            
+            err = update_adv(i, NULL, NULL, start_param);
+            if (err) {
+                DEBUG_PRINT("Failed to initialize adv set %d: %d\n", i, err);
+            }
+        }
+    }
+    
+    /* Start passive scanning if requested */
+    if (auto_start_scan) {
+        DEBUG_PRINT("Starting passive scan...\n");
+        err = passive_scan_control(0);  /* Scan all PHYs */
+        if (err) {
+            DEBUG_PRINT("Failed to start scan: %d\n", err);
+            /* Non-fatal, continue */
+        }
+    }
+    
+    DEBUG_PRINT("BLE test initialization complete\n");
+    return 0;
+}
+
+static int8_t losstst_task_tgr(int8_t set,int8_t TGR_VAL)
+{
+	if(TGR_VAL!=losstst_task_val && 0==set) return 0;
+	if(0==losstst_task_val && 0<set) losstst_task_val=TGR_VAL;
+	else if(TGR_VAL==losstst_task_val && -TGR_VAL==set) losstst_task_val=0;
+	return losstst_task_val;
+}
+static int8_t losstst_task_status(int8_t TGR_VAL)
+{
+	if(0==losstst_task_val) return 0; // idle
+	if(TGR_VAL==losstst_task_val) return 1; // running
+	return 2; // blocking	
+}
+
+int8_t numcst_task_tgr(int8_t set) { return losstst_task_tgr( set, numcst_tgr  ); }
+int8_t numcst_task_status(void) { return losstst_task_status( numcst_tgr ); }
+int8_t scanner_task_tgr(int8_t set){ return losstst_task_tgr( set, scanner_tgr ); }
+int8_t scanner_task_status(void){ return losstst_task_status( scanner_tgr); }
+int8_t sender_task_tgr(int8_t set) { return losstst_task_tgr( set, sender_tgr  ); }
+int8_t sender_task_status(void) { return losstst_task_status( sender_tgr ); }
+int8_t envmon_task_tgr(int8_t set) { return losstst_task_tgr( set, envmon_tgr  ); }
+int8_t envmon_task_status(void) { return losstst_task_status( envmon_tgr ); }
+
+/* ===============================================
+ * 雙層初始化範例
+ * =============================================== */
+
+// 應用層特定變數（依您的需求定義）
+static adv_data_t resp_burst_end_data[4];
+static adv_data_t remote_ctrl_data[4];
+
+/**
+ * @brief 應用層初始化
+ * 
+ * 此函數在 ble_test_init() 之後調用，初始化應用層特定功能
+ */
+int my_app_init(void)
+{
+    /* 初始化回應突發廣播資料 */
+    resp_burst_end_data[0] = (adv_data_t){
+        .type = BT_DATA_FLAGS,
+        .data_len = 1,
+        .data = p_common_adv_flags
+    };
+    resp_burst_end_data[1] = (adv_data_t){
+        .type = BT_DATA_MANUFACTURER_DATA,
+        .data_len = sizeof(device_info_t)
+    };
+    resp_burst_end_data[2] = (adv_data_t){
+        .type = 0,
+        .data = NULL,
+        .data_len = 0
+    };
+    
+    /* 初始化遠端控制資料 */
+    remote_ctrl_data[0] = (adv_data_t){
+        .type = BT_DATA_FLAGS,
+        .data_len = 1,
+        .data = p_common_adv_flags
+    };
+    remote_ctrl_data[2] = (adv_data_t){
+        .type = 0,
+        .data = NULL,
+        .data_len = 0
+    };
+    
+    /* 生成初始狀態訊息 */
+    sender_peek_msg();
+    
+    return 0;
+}
+
+/**
+ * @brief 完整的系統初始化（雙層）
+ * 
+ * 這是推薦的初始化順序
+ */
+int complete_system_init(void)
+{
+    int err;
+    
+    /* 第一層：核心 BLE 初始化 */
+    err = ble_test_init(true, true);
+    if (err) {
+        printf("Core BLE init failed: %d\n", err);
+        return err;
+    }
+    printf("✓ Core BLE initialized\n");
+    
+    /* 第二層：應用層初始化 */
+    err = my_app_init();
+    if (err) {
+        printf("Application init failed: %d\n", err);
+        return err;
+    }
+    printf("✓ Application layer initialized\n");
+    
+    printf("=== System Ready ===\n");
+    return 0;
+}
+
+void sender_peek_msg(void)
+{
+    if (!svc_init_success) {
+        return;
+    }
+    
+    /* Generate message for 2M PHY (index 0) */
+    snprintf(peek_msg_str[0], sizeof(peek_msg_str[0]), peek_sndpkt_form,
+            device_address[0],
+            pri_phy_typ[1], sec_phy_typ[2],  /* 1M/2M */
+            sub_total_snd_2m,
+            (round_phy_sel[0]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[0]) = MANUFACTURER_ID;
+    
+    /* Generate message for 1M PHY (index 1) */
+    snprintf(peek_msg_str[1], sizeof(peek_msg_str[1]), peek_sndpkt_form,
+            device_address[0],
+            pri_phy_typ[1], sec_phy_typ[1],  /* 1M/1M */
+            sub_total_snd_1m,
+            (round_phy_sel[1]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[1]) = MANUFACTURER_ID;
+    
+    /* Generate message for Coded PHY (index 2) */
+    snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_sndpkt_form,
+            device_address[0],
+            pri_phy_typ[3], sec_phy_typ[3],  /* S8/S8 */
+            sub_total_snd_s8,
+            (round_phy_sel[2]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[2]) = MANUFACTURER_ID;
+    
+    /* Generate message for BLE 4.x (index 3) */
+    snprintf(peek_msg_str[3], sizeof(peek_msg_str[3]), peek_sndpkt_btv4_form,
+            device_address[0],
+            "BLE", "v4",
+            sub_total_snd_ble4,
+            (round_phy_sel[3]) ? round_total_num : 0,
+            round_tx_pwr);
+    *(uint16_t *)(peek_msg_str[3]) = MANUFACTURER_ID;
+}
+
+void scanner_peek_msg(void)
+{
+    if (!svc_init_success) {
+        return;
+    }
+    
+    /* Temporary buffers for RSSI and TX power strings */
+    char rssi_str[3][8];
+    char tx_pwr_str[8];
+    
+    /* Generate message for 2M PHY (index 0) */
+    snprintf(peek_msg_str[0], sizeof(peek_msg_str[0]), peek_rcvpkt_form,
+            (uint8_t)rec_sets[0].node,
+            pri_phy_typ[rec_sets[0].pri_phy],
+            sec_phy_typ[rec_sets[0].sec_phy],
+            sub_total_rcv[0],
+            LOSS_TEST_BURST_COUNT * rec_sets[0].flow,
+            rssi_toa(peek_rcv_rssi[0][0], rssi_str[0]),  /* current RSSI */
+            rssi_toa(peek_rcv_rssi[0][1], rssi_str[1]),  /* min RSSI */
+            rssi_toa(peek_rcv_rssi[0][2], rssi_str[2]),  /* max RSSI */
+            txpwr_toa(remote_tx_pwr[0], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[0]) = MANUFACTURER_ID;
+    
+    /* Generate message for 1M PHY (index 1) */
+    snprintf(peek_msg_str[1], sizeof(peek_msg_str[1]), peek_rcvpkt_form,
+            (uint8_t)rec_sets[1].node,
+            pri_phy_typ[rec_sets[1].pri_phy],
+            sec_phy_typ[rec_sets[1].sec_phy],
+            sub_total_rcv[1],
+            LOSS_TEST_BURST_COUNT * rec_sets[1].flow,
+            rssi_toa(peek_rcv_rssi[1][0], rssi_str[0]),
+            rssi_toa(peek_rcv_rssi[1][1], rssi_str[1]),
+            rssi_toa(peek_rcv_rssi[1][2], rssi_str[2]),
+            txpwr_toa(remote_tx_pwr[1], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[1]) = MANUFACTURER_ID;
+    
+    /* Generate message for Coded PHY (index 2) */
+    snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_rcvpkt_form,
+            (uint8_t)rec_sets[2].node,
+            pri_phy_typ[rec_sets[2].pri_phy],
+            sec_phy_typ[rec_sets[2].sec_phy],
+            sub_total_rcv[2],
+            LOSS_TEST_BURST_COUNT * rec_sets[2].flow,
+            rssi_toa(peek_rcv_rssi[2][0], rssi_str[0]),
+            rssi_toa(peek_rcv_rssi[2][1], rssi_str[1]),
+            rssi_toa(peek_rcv_rssi[2][2], rssi_str[2]),
+            txpwr_toa(remote_tx_pwr[2], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[2]) = MANUFACTURER_ID;
+    
+    /* Generate message for BLE 4.x (index 3) */
+    snprintf(peek_msg_str[3], sizeof(peek_msg_str[3]), peek_rcvpkt_btv4_form,
+            (uint8_t)rec_sets[3].node,
+            "BLE", "v4",
+            sub_total_rcv[3],
+            LOSS_TEST_BURST_COUNT * rec_sets[3].flow,
+            rssi_toa(peek_rcv_rssi[3][0], rssi_str[0]),
+            rssi_toa(peek_rcv_rssi[3][1], rssi_str[1]),
+            rssi_toa(peek_rcv_rssi[3][2], rssi_str[2]),
+            txpwr_toa(remote_tx_pwr[3], tx_pwr_str));
+    *(uint16_t *)(peek_msg_str[3]) = MANUFACTURER_ID;
+}
+
+const char* get_peek_msg_buffer(uint8_t index)
+{
+    if (index >= 4) {
+        return NULL;
+    }
+    return peek_msg_str[index];
+}
+
+/* ================== Burst Test Functions Implementation ================== */
+
+void blocking_adv(uint8_t index)
+{
+    if (index >= MAX_ADV_SETS) {
+        return;
+    }
+    
+    /* Stop advertising immediately */
+    platform_stop_adv(ext_adv[index]);
+    
+    DEBUG_PRINT("blocking_adv(%u): %s\n", index, err ? "failed" : "stopped");
+    
+    /* Mark as stopped and clear start flag */
+    ext_adv_status[index].stop = 1;
+    ext_adv_status[index].start = 0;
 }
 
 void sender_finit(void)
 {
-	// 啟動廣播
-    adv_param_t work_adv_param;
+    if (!svc_init_success) {
+        return;
+    }
+    
+    /* Mark all enabled PHY transmissions as complete */
+    for (int idx = 0; idx < 4; idx++) {
+        if (round_phy_sel[idx]) {
+            sndr_abort_flag[idx] = true;
+            device_info_form[idx].pre_cnt = INT16_MAX;
+            
+            if (idx == 3) {
+                device_info_bt4_form.device_info = device_info_form[3];
+            }
+            
+            /* Use fast advertising parameters (index 3) with options modified */
+            /* Note: Platform-specific parameter modification needed here */
+            /* Original code: work_adv_param.options |= adv_param_mask[1]; */
+            /*                work_adv_param.options &= ~adv_param_mask[0]; */
+            
+            update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_finit_start_param);
+        }
+    }
+    
+    /* Update peek message advertising if not in remote control mode */
+    //if (!rc_party) {
+        update_adv(4, NULL, NULL, NULL);
+    //}
+    
+    DEBUG_PRINT("Sender finalized\n");
+}
 
-	for(int idx=0; idx<4 ;idx++) {
-		if(round_phy_sel[idx]) {
-			sndr_abort_flag[idx]=true;
-			device_info_form[idx].pre_cnt=INT16_MAX;
-			if(3==idx) device_info_bt4_form.device_info=device_info_form[3];
-			work_adv_param=*non_connectable_adv_param_x[3][idx];
-			work_adv_param.options|=adv_param_mask[1];
-			work_adv_param.options&=~adv_param_mask[0];
-			update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_finit_start_param);
-		}
-	}
+int losstst_sender(void)
+{
+    if (!svc_init_success) {
+        return -1;
+    }
+    
+    int retval = 1;
+    int16_t lc_pre_cnt;
+    uint16_t sub_phy0, sub_phy1, sub_phy2;//, sub_phy3;
+    bool lc_phy_sel[4] = {false, false, false, false};
+    bool abort = false;
+    int64_t uptime_64_barrier, period_msec, pitch_msec;
+    
+    /* Determine which PHYs still need transmission */
+    sub_phy0 = (round_phy_sel[0]) ? sub_total_snd_2m : round_total_num;
+    sub_phy1 = (round_phy_sel[1]) ? sub_total_snd_1m : round_total_num;
+    sub_phy1 = (sub_phy1 < sub_phy0) ? sub_phy1 : sub_phy0;  /* MIN */
+    sub_phy2 = (round_phy_sel[2]) ? sub_total_snd_s8 : round_total_num;
+    //sub_phy3 = (round_phy_sel[3]) ? sub_total_snd_ble4 : round_total_num;
+    
+    /* Select PHYs for this burst cycle */
+    if (sub_phy1 <= sub_phy2) {
+        lc_phy_sel[0] = round_phy_sel[0];
+        lc_phy_sel[1] = round_phy_sel[1];
+        lc_phy_sel[3] = round_phy_sel[3];
+    } else {
+        lc_phy_sel[2] = round_phy_sel[2];
+    }
+    
+    /* Check if any PHY needs more transmissions */
+    if ((lc_phy_sel[0] && sub_total_snd_2m < round_total_num)
+        || (lc_phy_sel[1] && sub_total_snd_1m < round_total_num)
+        || (lc_phy_sel[2] && sub_total_snd_s8 < round_total_num)
+        || (lc_phy_sel[3] && sub_total_snd_ble4 < round_total_num)) {
+        
+        /* ========== Phase 1: Pre-burst countdown (3 seconds) ========== */
+        uptime_64_barrier = platform_uptime_get();
+        lc_pre_cnt = -3;
+        
+        /* Initialize pre-burst progress */
+        for (int idx = 0; idx <= 3; idx++) {
+            if (lc_phy_sel[idx]) {
+                device_info_form[idx].pre_cnt = lc_pre_cnt;
+                device_info_form[idx].flw_cnt++;
+                if (idx == 3) {
+                    device_info_bt4_form.device_info = device_info_form[3];
+                }
+            }
+        }
+        
+        /* Countdown loop */
+        do {
+            /* Start advertising with countdown value */
+            for (int idx = 0; idx <= 3; idx++) {
+                if (lc_phy_sel[idx]) {
+                    /* Note: Would need platform-specific parameter selection here */
+                    /* Original: work_adv_param = *non_connectable_adv_param_x[3][idx]; */
+                    if (idx == 3) {
+                        device_info_bt4_form.device_info = device_info_form[3];
+                    }
+                    update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_default_start_param);
+                    snd_state_val[idx] = 1;
+                }
+            }
+            
+            /* Wait 1 second */
+            uptime_64_barrier += 1000;
+            while (uptime_64_barrier > platform_uptime_get()) {
+                if (platform_can_yield()) {
+                    platform_yield();
+                }
+                if (sender_abort_p != NULL) {
+                    bool (*abort_fn)(void) = (bool (*)(void))sender_abort_p;
+                    if ((abort = abort_fn())) {
+                        break;
+                    }
+                }
+            }
+            
+            lc_pre_cnt++;
+            
+            /* Update countdown value */
+            for (int idx = 0; idx <= 3; idx++) {
+                if (lc_phy_sel[idx]) {
+                    device_info_form[idx].pre_cnt = lc_pre_cnt;
+                    if (idx == 3) {
+                        device_info_bt4_form.device_info = device_info_form[3];
+                    }
+                }
+            }
+            
+        } while (!abort && lc_pre_cnt != 0);
+        
+        if (abort) {
+            snd_state_val[0] = snd_state_val[1] = snd_state_val[2] = snd_state_val[3] = 0;
+            sender_finit();
+            return -1;
+        }
+        
+        /* Stop all countdown advertising */
+        blocking_adv(0);
+        blocking_adv(1);
+        blocking_adv(2);
+        blocking_adv(3);
+        
+        /* ========== Phase 2: Burst transmission ========== */
+        period_msec = LOSS_TEST_BURST_COUNT * value_interval[round_adv_param_index][1];
+        int32_t period_sec = 1 + period_msec / 1000;
+        
+        /* Initialize burst progress counter */
+        for (int idx = 0; idx <= 3; idx++) {
+            if (lc_phy_sel[idx]) {
+                device_info_form[idx].pre_cnt = period_sec;
+            }
+            if (idx == 3) {
+                device_info_bt4_form.device_info = device_info_form[3];
+            }
+        }
+        
+        /* Wait 100ms before starting burst */
+        uptime_64_barrier += 100;
+        while (uptime_64_barrier > platform_uptime_get()) {
+            if (platform_can_yield()) {
+                platform_yield();
+            }
+            if (sender_abort_p != NULL) {
+                bool (*abort_fn)(void) = (bool (*)(void))sender_abort_p;
+                if ((abort = abort_fn())) {
+                    break;
+                }
+            }
+        }
+        
+        if (abort) {
+            snd_state_val[0] = snd_state_val[1] = snd_state_val[2] = snd_state_val[3] = 0;
+            sender_finit();
+            return -1;
+        }
+        
+        /* Start burst advertising (250 events per PHY) */
+        for (int idx = 0; idx <= 3; idx++) {
+            if (lc_phy_sel[idx]) {
+                /* Note: Would need platform-specific parameter selection here */
+                if (idx == 3) {
+                    device_info_bt4_form.device_info = device_info_form[3];
+                }
+                update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_burst_start_param);
+                snd_state_val[idx] = 2;
+            }
+        }
+        
+        /* Wait for burst completion while updating countdown */
+        uptime_64_barrier += period_msec;
+        pitch_msec = 1000 + platform_uptime_get();
+        
+        while (((lc_phy_sel[0] && !ext_adv_status[0].stop)
+                || (lc_phy_sel[1] && !ext_adv_status[1].stop)
+                || (lc_phy_sel[2] && !ext_adv_status[2].stop)
+                || (lc_phy_sel[3] && !ext_adv_status[3].stop))
+            && (uptime_64_barrier > (period_msec = platform_uptime_get()))) {
+            
+            if (platform_can_yield()) {
+                platform_yield();
+            }
+            
+            if (sender_abort_p != NULL) {
+                bool (*abort_fn)(void) = (bool (*)(void))sender_abort_p;
+                if ((abort = abort_fn())) {
+                    break;
+                }
+            }
+            
+            /* Update countdown every second */
+            if (period_msec >= pitch_msec) {
+                pitch_msec += 1000;
+                period_sec--;
+                
+                for (int idx = 0; idx <= 3; idx++) {
+                    if (lc_phy_sel[idx]) {
+                        device_info_form[idx].pre_cnt = period_sec;
+                        if (idx == 3) {
+                            device_info_bt4_form.device_info = device_info_form[3];
+                        }
+                        update_adv(idx, NULL, ratio_test_data_set[idx], NULL);
+                    }
+                }
+            }
+        }
+        
+        if (abort) {
+            snd_state_val[0] = snd_state_val[1] = snd_state_val[2] = snd_state_val[3] = 0;
+            sender_finit();
+            return -1;
+        }
+        
+        /* ========== Phase 3: Post-burst reporting ========== */
+        ack_remote_resp[0] = ack_remote_resp[1] = ack_remote_resp[2] = ack_remote_resp[3] = false;
+        
+        /* Update counters and start reporting advertising */
+        for (int idx = 0; idx <= 3; idx++) {
+            if (lc_phy_sel[idx]) {
+                device_info_form[idx].pre_cnt = 0;
+                
+                if (idx == 3) {
+                    device_info_bt4_form.device_info = device_info_form[3];
+                }
+                
+                /* Note: Would need platform-specific parameter selection here */
+                update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_default_start_param);
+                
+                /* Update transmission counters */
+                switch (idx) {
+                    case 0:
+                        xmt_ratio_val[idx][0] = (sub_total_snd_2m += LOSS_TEST_BURST_COUNT);
+                        break;
+                    case 1:
+                        xmt_ratio_val[idx][0] = (sub_total_snd_1m += LOSS_TEST_BURST_COUNT);
+                        break;
+                    case 2:
+                        xmt_ratio_val[idx][0] = (sub_total_snd_s8 += LOSS_TEST_BURST_COUNT);
+                        break;
+                    case 3:
+                        xmt_ratio_val[idx][0] = (sub_total_snd_ble4 += LOSS_TEST_BURST_COUNT);
+                        break;
+                }
+                snd_state_val[idx] = 3;
+            }
+        }
+        
+        /* Generate and print status messages */
+        sender_peek_msg();
+        //if (!rc_party) {
+            update_adv(4, NULL, NULL, NULL);
+        //}
+        
+        if (lc_phy_sel[0]) {
+            DEBUG_PRINT("%s\n", peek_msg_str[0] + 2);
+        }
+        if (lc_phy_sel[1]) {
+            DEBUG_PRINT("%s\n", peek_msg_str[1] + 2);
+        }
+        if (lc_phy_sel[2]) {
+            DEBUG_PRINT("%s\n", peek_msg_str[2] + 2);
+        }
+        if (lc_phy_sel[3]) {
+            DEBUG_PRINT("%s\n", peek_msg_str[3] + 2);
+        }
+        
+        /* Wait for remote response or timeout (100ms) */
+        uptime_64_barrier += 100;
+        while (((lc_phy_sel[0] && !ack_remote_resp[0])
+                || (lc_phy_sel[1] && !ack_remote_resp[1])
+                || (lc_phy_sel[2] && !ack_remote_resp[2])
+                || (lc_phy_sel[3] && !ack_remote_resp[3]) || ignore_rcv_resp)
+            && (uptime_64_barrier > platform_uptime_get())) {
+            
+            if (platform_can_yield()) {
+                platform_yield();
+            }
+            
+            if (sender_abort_p != NULL) {
+                bool (*abort_fn)(void) = (bool (*)(void))sender_abort_p;
+                if ((abort = abort_fn())) {
+                    break;
+                }
+            }
+        }
+        
+        if (abort) {
+            snd_state_val[0] = snd_state_val[1] = snd_state_val[2] = snd_state_val[3] = 0;
+            sender_finit();
+            return -1;
+        }
+        
+        snd_state_val[0] = snd_state_val[1] = snd_state_val[2] = snd_state_val[3] = 0;
+        
+        /* ========== Phase 4: Check for completion ========== */
+        /* Check each PHY for completion */
+        if (lc_phy_sel[0] && sub_total_snd_2m >= round_total_num) {
+            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
+                       (uint8_t)device_address[0],
+                       pri_phy_typ[1], sec_phy_typ[2]);
+            
+            device_info_form[0].pre_cnt = INT16_MAX;
+            update_adv(0, NULL, ratio_test_data_set[0], p_adv_default_start_param);
+        }
+        
+        if (lc_phy_sel[1] && sub_total_snd_1m >= round_total_num) {
+            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
+                       (uint8_t)device_address[0],
+                       pri_phy_typ[1], sec_phy_typ[1]);
+            
+            device_info_form[1].pre_cnt = INT16_MAX;
+            update_adv(1, NULL, ratio_test_data_set[1], p_adv_default_start_param);
+        }
+        
+        if (lc_phy_sel[2] && sub_total_snd_s8 >= round_total_num) {
+            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
+                       (uint8_t)device_address[0],
+                       pri_phy_typ[3], sec_phy_typ[3]);
+            
+            device_info_form[2].pre_cnt = INT16_MAX;
+            update_adv(2, NULL, ratio_test_data_set[2], p_adv_default_start_param);
+        }
+        
+        if (lc_phy_sel[3] && sub_total_snd_ble4 >= round_total_num) {
+            DEBUG_PRINT("SND:%u P:BLEv4 Complete\n",
+                       (uint8_t)device_address[0]);
+            
+            device_info_form[3].pre_cnt = INT16_MAX;
+            device_info_bt4_form.device_info = device_info_form[3];
+            update_adv(3, NULL, ratio_test_data_set[3], p_adv_default_start_param);
+        }
+        
+        /* Wait 500ms + 500ms with abort check on second half */
+        uptime_64_barrier = 500 + platform_uptime_get();
+        while (uptime_64_barrier > platform_uptime_get()) {
+            if (platform_can_yield()) {
+                platform_yield();
+            }
+        }
+        
+        uptime_64_barrier += 500;
+        while (uptime_64_barrier > platform_uptime_get()) {
+            if (platform_can_yield()) {
+                platform_yield();
+            }
+            if (sender_abort_p != NULL) {
+                bool (*abort_fn)(void) = (bool (*)(void))sender_abort_p;
+                if ((abort = abort_fn())) {
+                    break;
+                }
+            }
+        }
+        
+    } else {
+        /* All PHYs complete */
+        sender_finit();
+        retval = 0;
+    }
+    
+    return retval;
+}
 
-	if(!rc_party) update_adv(4,NULL,NULL,NULL);
+int losstst_scanner(void)
+{
+    if (!svc_init_success) {
+        return -1;
+    }
+    
+    int retval = 1;
+    int64_t period_msec, uptime_64_barrier;
+    bool abort = false;
+    static int8_t round_scan_method;
+    static int8_t next_scan_method = 0;
+    static int16_t assign;
+    static int64_t cntdn = 0;
+    static int64_t complete_mark, complete_elapse;
+    static bool phy_mark[4];
+    static int64_t hrtbt, hrtbt_stamp;
+    static bool first_round;
+    
+    /* Initialize on first call or after inactive period */
+    if (scanner_inactive) {
+        rcv_stamp_t rcv_stamp[4];
+        memset(rcv_stamp, 0, sizeof(rcv_stamp_t) * 4);
+        scanner_inactive = false;
+        memset(rcv_ratio_val, 0, sizeof(rcv_ratio_val));
+        
+        /* Determine scan method based on PHY selection */
+        round_scan_method = (round_phy_sel[2] && (round_phy_sel[3] || round_phy_sel[1] || round_phy_sel[0])) 
+                          ? 0 : ((round_phy_sel[2]) ? 2 : 1);
+        
+        memset(rcv_stats, 0, sizeof(rcv_stats));
+        memset(rcv_ratio_val, 0, sizeof(rcv_ratio_val));
+        memset(rcv_rssi_val, 0, sizeof(rcv_rssi_val));
+        first_round = true;
+    }
+    
+    /* Start passive scanning */
+    passive_scan_control((2 == round_scan_method /*&& rc_party*/) ? 0 : round_scan_method);
+    
+    /* Calculate expected period */
+    period_msec = LOSS_TEST_BURST_COUNT * value_interval[round_adv_param_index][1];
+    if (round_scan_method) {
+        period_msec *= 2;
+    } else {
+        period_msec += 3000;
+    }
+    
+    /* Heartbeat timeout check */
+    if (0 == hrtbt_stamp) {
+        hrtbt_stamp = platform_uptime_get();
+    } else if (
+        ((NULL != scanner_abort_p) && (true == (abort = ((bool (*)(void))scanner_abort_p)())))
+        || ((round_scan_method ? 30000 : 10000) < (hrtbt += platform_uptime_get() - hrtbt_stamp))
+        || (period_msec * (first_round ? 5 : 1) < hrtbt)) {
+        hrtbt = hrtbt_stamp = 0;
+        passive_scan_control(-1);  /* Stop scanning */
+        return -1;
+    }
+    
+    /* Stop all advertising before receiving */
+    blocking_adv(0);
+    blocking_adv(1);
+    blocking_adv(2);
+    blocking_adv(3);
+    
+    /* Determine next scan method based on received pre-counts */
+    next_scan_method = 0;
+    
+    if (0 > (assign = precnt_rcv[0]) && round_phy_sel[0]) {
+        if (INT16_MIN != assign) {
+            next_scan_method = 1;
+            cntdn = precnt_rcv[0] * -1000L;
+        }
+    } else if (0 > (assign = precnt_rcv[1]) && round_phy_sel[1]) {
+        if (INT16_MIN != assign) {
+            next_scan_method = 1;
+            cntdn = precnt_rcv[1] * -1000L;
+        }
+    } else if (0 > (assign = precnt_rcv[2]) && round_phy_sel[2]) {
+        if (INT16_MIN != assign) {
+            next_scan_method = 2;
+            cntdn = precnt_rcv[2] * -1000L;
+        }
+    } else if (0 > (assign = precnt_rcv[3]) && round_phy_sel[3]) {
+        if (INT16_MIN != assign) {
+            next_scan_method = 1;
+            cntdn = precnt_rcv[3] * -1000L;
+        }
+    } else if (0 < (assign = precnt_rcv[0]) && round_phy_sel[0]) {
+        if (INT16_MAX != assign) next_scan_method = 1;
+    } else if (0 < (assign = precnt_rcv[1]) && round_phy_sel[1]) {
+        if (INT16_MAX != assign) next_scan_method = 1;
+    } else if (0 < (assign = precnt_rcv[2]) && round_phy_sel[2]) {
+        if (INT16_MAX != assign) next_scan_method = 2;
+    } else if (0 < (assign = precnt_rcv[3]) && round_phy_sel[3]) {
+        if (INT16_MAX != assign) next_scan_method = 1;
+    } else {
+        /* Check if all receptions complete */
+        if ((!rec_sets[0].flow && !rec_sets[1].flow && !rec_sets[2].flow && !rec_sets[3].flow)) {
+            /* No flows detected yet */
+        } else if ((rec_sets[0].complete || !rec_sets[0].flow)
+                && (rec_sets[1].complete || !rec_sets[1].flow)
+                && (rec_sets[2].complete || !rec_sets[2].flow)
+                && (rec_sets[3].complete || !rec_sets[3].flow)) {
+            /* All complete */
+            hrtbt = hrtbt_stamp = 0;
+            retval = 0;
+            passive_scan_control(-1);  /* Stop scanning */
+        }
+        return retval;
+    }
+    
+    if (0 == next_scan_method) {
+        return retval;
+    }
+    
+    first_round = false;
+    
+    /* Check for completion timeout */
+    if (INT16_MAX == precnt_rcv[0] && INT16_MAX == precnt_rcv[1] && 
+        INT16_MAX == precnt_rcv[2] && INT16_MAX == precnt_rcv[3]) {
+        if (0 == complete_mark) {
+            complete_mark = platform_uptime_get();
+        } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
+            DEBUG_PRINT("RCV_Task completed\n");
+            passive_scan_control(-1);
+            return 0;
+        }
+    } else {
+        complete_elapse = complete_mark = 0;
+    }
+    
+    /* Stop peek message advertising if not in remote control mode */
+    //if (!rc_party) {
+        blocking_adv(4);
+    //}
+    
+    period_msec += cntdn;
+    uptime_64_barrier = period_msec + platform_uptime_get();
+    
+    /* Start scanning with selected method */
+    passive_scan_control(next_scan_method);
+    
+    cntdn = 0;
+    phy_mark[0] = phy_mark[1] = phy_mark[2] = phy_mark[3] = false;
+    
+    /* Main reception loop */
+    while (uptime_64_barrier > platform_uptime_get()) {
+        /* Print received messages */
+        if ('\0' != *rcv_msg_str[0]) {
+            DEBUG_PRINT("%s\n", rcv_msg_str[0]);
+            *rcv_msg_str[0] = '\0';
+        }
+        if ('\0' != *rcv_msg_str[1]) {
+            DEBUG_PRINT("%s\n", rcv_msg_str[1]);
+            *rcv_msg_str[1] = '\0';
+        }
+        if ('\0' != *rcv_msg_str[2]) {
+            DEBUG_PRINT("%s\n", rcv_msg_str[2]);
+            *rcv_msg_str[2] = '\0';
+        }
+        
+        /* Check for abort */
+        if (NULL == scanner_abort_p) {
+        } else if (true == (abort = ((bool (*)(void))scanner_abort_p)())) {
+            rcv_state_val[0] = rcv_state_val[1] = rcv_state_val[2] = rcv_state_val[3] = 0;
+            break;
+        }
+        
+        /* Track PHY states for scan method 1 (1M/2M/BLE4) */
+        if (1 == next_scan_method) {
+            if (0 > (precnt_rcv[0])) {
+                if (INT16_MIN != precnt_rcv[0]) {
+                    phy_mark[0] = true;
+                    rcv_state_val[0] = 1;
+                }
+            } else if (0 < (precnt_rcv[0])) {
+                phy_mark[0] = true;
+                rcv_state_val[0] = 2;
+            } else if (0 == (precnt_rcv[0])) {
+                if (phy_mark[0]) rcv_state_val[0] = 3;
+            }
+            
+            if (0 > (precnt_rcv[1])) {
+                if (INT16_MIN != precnt_rcv[1]) {
+                    phy_mark[1] = true;
+                    rcv_state_val[1] = 1;
+                }
+            } else if (0 < (precnt_rcv[1])) {
+                phy_mark[1] = true;
+                rcv_state_val[1] = 2;
+            } else if (0 == (precnt_rcv[1])) {
+                if (phy_mark[1]) rcv_state_val[1] = 3;
+            }
+            
+            if (0 > (precnt_rcv[3])) {
+                if (INT16_MIN != precnt_rcv[3]) {
+                    phy_mark[3] = true;
+                    rcv_state_val[3] = 1;
+                }
+            } else if (0 < (precnt_rcv[3])) {
+                phy_mark[3] = true;
+                rcv_state_val[3] = 2;
+            } else if (0 == (precnt_rcv[3])) {
+                if (phy_mark[3]) rcv_state_val[3] = 3;
+            }
+            
+            rcv_state_val[2] = 0;
+        }
+        
+        /* Track PHY states for scan method 2 (Coded PHY) */
+        if (2 == next_scan_method) {
+            if (0 > precnt_rcv[2]) {
+                if (INT16_MIN != precnt_rcv[2]) {
+                    phy_mark[2] = true;
+                    rcv_state_val[2] = 1;
+                }
+            }
+            if (0 < precnt_rcv[2]) {
+                phy_mark[2] = true;
+                rcv_state_val[2] = 2;
+            }
+            if (0 == precnt_rcv[2]) {
+                if (phy_mark[2]) rcv_state_val[2] = 3;
+            }
+            rcv_state_val[0] = rcv_state_val[1] = rcv_state_val[3] = 0;
+        }
+        
+        /* Send response when burst complete */
+        for (int idx = 0; idx <= 3; idx++) {
+            if (phy_mark[idx] && rec_sets[idx].complete) {
+                abort = true;
+                break;
+            }
+            if (phy_mark[idx] && 0 == precnt_rcv[idx]) {
+                if (!ignore_rcv_resp) {
+                    resp_burst_end_data[1].data = (const uint8_t *)&remote_resp_form[idx];
+                    update_adv(idx, NULL, resp_burst_end_data, p_adv_1sec_start_param);
+                }
+                
+                rcv_state_val[idx] = 0;
+                phy_mark[idx] = false;
+            }
+        }
+        
+        if (abort) break;
+        
+        /* Exit loop if all PHYs inactive */
+        if (!phy_mark[0] && !phy_mark[1] && !phy_mark[2] && !phy_mark[3]) {
+            if (0 == cntdn) {
+                cntdn = 800 + platform_uptime_get();
+            } else if (cntdn < platform_uptime_get()) {
+                break;
+            }
+        }
+        
+        if (platform_can_yield()) {
+            platform_yield();
+        }
+    }
+    
+    /* Clear marked PHYs */
+    if (phy_mark[0]) precnt_rcv[0] = 0;
+    if (phy_mark[1]) precnt_rcv[1] = 0;
+    if (phy_mark[2]) precnt_rcv[2] = 0;
+    if (phy_mark[3]) precnt_rcv[3] = 0;
+    
+    rcv_state_val[0] = rcv_state_val[1] = rcv_state_val[2] = rcv_state_val[3] = 0;
+    hrtbt = hrtbt_stamp = 0;
+    
+    if (abort) retval = -1;
+    
+    /* Update status message */
+    scanner_peek_msg();
+    //if (!rc_party) {
+        update_adv(4, NULL, NULL, p_adv_default_start_param);
+    //}
+    
+    /* Resume scanning */
+    passive_scan_control(((0 >= retval) || (2 == round_scan_method/* && rc_party*/)) ? 0 : round_scan_method);
+    
+    return retval;
 }
