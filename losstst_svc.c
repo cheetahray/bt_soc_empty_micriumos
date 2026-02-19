@@ -262,33 +262,6 @@ typedef struct __attribute__((__packed__)) {
 	int rssi_idx;
 } rcv_stamp_t;
 
-/* ================== Test Setup Functions ================== */
-
-/**
- * @brief Test parameter structure for setup functions
- * 
- * This structure contains all parameters needed to configure
- * the BLE test modes (sender, scanner, numcast, envmon).
- */
-typedef struct {
-    int8_t txpwr;              /**< TX power level configuration index */
-    uint8_t interval_idx;      /**< Advertising interval index */
-    uint8_t count_idx;         /**< Total count index for sender mode */
-    bool phy_2m;               /**< Enable 2M PHY */
-    bool phy_1m;               /**< Enable 1M PHY */
-    bool phy_s8;               /**< Enable Coded PHY (S=8) */
-    bool phy_ble4;             /**< Enable BLE 4.x legacy mode */
-    bool ignore_rcv_resp;      /**< Ignore received responses */
-    bool inhibit_ch37;         /**< Disable advertising channel 37 */
-    bool inhibit_ch38;         /**< Disable advertising channel 38 */
-    bool inhibit_ch39;         /**< Disable advertising channel 39 */
-    bool non_ANONYMOUS;        /**< Use non-anonymous advertising */
-    void *envmon_abort;        /**< Environment monitor abort callback */
-    void *sender_abort;        /**< Sender abort callback */
-    void *scanner_abort;       /**< Scanner abort callback */
-    void *numcast_abort;       /**< Number cast abort callback */
-} test_param_t;
-
 /* ================== Data Structures ================== */
 
 /**
@@ -336,46 +309,6 @@ typedef struct __attribute__((__packed__)) {
     uint16_t form_id;             /* Form ID */
     uint16_t number_cast_form[4]; /* Number cast values */
 } numcast_info_t;
-
-/* ================== Platform Abstraction Layer ================== */
-
-/**
- * @brief BLE advertising parameter structures for Silicon Labs BG/MG series
- */
-
-/* TODO: Include appropriate Silicon Labs headers */
-/* #include "sl_bt_api.h" */
-
-typedef struct {
-    uint8_t  id;            /* Reserved for compatibility (unused) */
-    uint8_t  sid;           /* Reserved for periodic advertising (unused) */
-    uint8_t  secondary_max_skip; /* Reserved for extended adv optimization (unused) */
-    uint32_t interval_min;  /* Advertising interval minimum (0.625ms units) */
-    uint32_t interval_max;  /* Advertising interval maximum (0.625ms units) */
-    uint8_t  primary_phy;   /* Primary PHY: SL_BT_GAP_PHY_1M or SL_BT_GAP_PHY_CODED */
-    uint8_t  secondary_phy; /* Secondary PHY: SL_BT_GAP_PHY_1M, 2M, or CODED */
-    uint16_t options;       /* ⭐ KEY FIELD - Controls all advertising behavior:
-                             *   BT_LE_ADV_OPT_USE_TX_POWER: Include TX power in adv
-                             *   BT_LE_ADV_OPT_ANONYMOUS: Anonymous advertising
-                             *   BT_LE_ADV_OPT_EXT_ADV: Use extended advertising
-                             *   BT_LE_ADV_OPT_NO_2M: Don't use 2M PHY
-                             *   BT_LE_ADV_OPT_CODED: Use Coded PHY (Long Range)
-                             *   BT_LE_ADV_OPT_USE_IDENTITY: Use identity address
-                             *   BT_LE_ADV_OPT_CONNECTABLE: Connectable advertising
-                             */
-    void    *peer;          /* Reserved for directed advertising (unused) */
-} adv_param_t;
-
-typedef struct {
-    uint16_t timeout;       /* Duration in 10ms units (0=continuous) */
-    uint16_t num_events;    /* Max number of events (0=no limit) */
-} adv_start_param_t;
-
-typedef struct {
-    uint8_t type;          /* AD type (flags, name, manufacturer, etc.) */
-    uint8_t data_len;      /* Data length */
-    const uint8_t *data;   /* Data pointer */
-} adv_data_t;
 
 typedef uint8_t adv_handle_t;  /* Advertising handle (0-based index) */
 
