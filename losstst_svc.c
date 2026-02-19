@@ -28,7 +28,7 @@
 #endif
 
 /* ================== Debug Configuration ================== */
-#define CHK_UPDATE_ADV_PROCEDURE 0  /* Set to 1 to enable debug prints */
+#define CHK_UPDATE_ADV_PROCEDURE 1  /* Set to 1 to enable debug prints */
 
 #if CHK_UPDATE_ADV_PROCEDURE
     #define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
