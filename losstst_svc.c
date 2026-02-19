@@ -1411,52 +1411,89 @@ int passive_scan_control(int8_t method)
     static int8_t scan_method = -1;
     int err = 0;
     
+    /* BLE scan timing parameters (in units of 0.625ms) */
+    #define BT_GAP_SCAN_FAST_INTERVAL       0x0060  /* 96 = 60ms */
+    #define BT_GAP_SCAN_FAST_WINDOW         0x0060  /* 96 = 60ms (100% duty cycle) */
+    #define BT_GAP_SCAN_FAST_INTERVAL_CODED 0x0120  /* 288 = 180ms */
+    #define BT_GAP_SCAN_FAST_WINDOW_CODED   0x0090  /* 144 = 90ms (50% duty cycle) */
+    
     /* Silicon Labs implementation using sl_bt_scanner API */
-    //Example implementation:
-     sl_status_t status;
-     uint8_t scanning_phy;
-     
-     if (method < 0) {
-         // Stop scanning
-         status = sl_bt_scanner_stop();
-         scan_method = -1;
-         return (status == SL_STATUS_OK) ? 0 : -EIO;
-     }
-     
-     if (method != scan_method) {
-         // Stop current scanning
-         sl_bt_scanner_stop();
-         
-         // Determine PHY to scan
-         switch (method) {
-             case 0:  // All PHYs
-                 scanning_phy = sl_bt_scanner_scan_phy_1m_and_coded;
-                 break;
-             case 1:  // 1M only
-                 scanning_phy = sl_bt_scanner_scan_phy_1m;
-                 break;
-             case 2:  // Coded only
-                 scanning_phy = sl_bt_scanner_scan_phy_coded;
-                 break;
-             default:
-                 scanning_phy = sl_bt_scanner_scan_phy_1m;
-                 break;
-         }
-         
-         // Start scanning
-         status = sl_bt_scanner_start(
-             scanning_phy,
-             sl_bt_scanner_discover_observation  // Passive scanning
-         );
-         
-         if (status != SL_STATUS_OK) {
-             return -EIO;
-         }
-         
-         scan_method = method;
-     }
+    sl_status_t status;
+    uint8_t scanning_phy;
+    uint16_t scan_interval;
+    uint16_t scan_window;
+    
+    if (method < 0) {
+        /* Stop scanning */
+        status = sl_bt_scanner_stop();
+        scan_method = -1;
+        return (status == SL_STATUS_OK) ? 0 : -EIO;
+    }
+    
+    if (method != scan_method) {
+        /* Stop current scanning */
+        sl_bt_scanner_stop();
+        
+        /* Determine PHY and timing parameters */
+        switch (method) {
+            case 0:  /* All PHYs - standard timing */
+                scanning_phy = sl_bt_scanner_scan_phy_1m_and_coded;
+                scan_interval = BT_GAP_SCAN_FAST_INTERVAL;
+                scan_window = BT_GAP_SCAN_FAST_WINDOW;
+                break;
+            
+            case 1:  /* 1M only - standard timing */
+                scanning_phy = sl_bt_scanner_scan_phy_1m;
+                scan_interval = BT_GAP_SCAN_FAST_INTERVAL;
+                scan_window = BT_GAP_SCAN_FAST_WINDOW;
+                break;
+            
+            case 2:  /* Coded only - standard timing */
+                scanning_phy = sl_bt_scanner_scan_phy_coded;
+                scan_interval = BT_GAP_SCAN_FAST_INTERVAL;
+                scan_window = BT_GAP_SCAN_FAST_WINDOW;
+                break;
+            
+            case 3:  /* Numcast mode - all PHYs with longer interval */
+                scanning_phy = sl_bt_scanner_scan_phy_1m_and_coded;
+                scan_interval = BT_GAP_SCAN_FAST_INTERVAL_CODED;
+                scan_window = BT_GAP_SCAN_FAST_WINDOW_CODED;
+                break;
+            
+            default:
+                scanning_phy = sl_bt_scanner_scan_phy_1m;
+                scan_interval = BT_GAP_SCAN_FAST_INTERVAL;
+                scan_window = BT_GAP_SCAN_FAST_WINDOW;
+                break;
+        }
+        
+        /* Set scan timing parameters */
+        status = sl_bt_scanner_set_parameters(
+            sl_bt_scanner_scan_mode_passive,
+            scan_interval,
+            scan_window
+        );
+        
+        if (status != SL_STATUS_OK) {
+            DEBUG_PRINT("Failed to set scan parameters: 0x%04X\n", status);
+            return -EIO;
+        }
+        
+        /* Start scanning */
+        status = sl_bt_scanner_start(
+            scanning_phy,
+            sl_bt_scanner_discover_observation  /* Passive scanning */
+        );
+        
+        if (status != SL_STATUS_OK) {
+            DEBUG_PRINT("Failed to start scanning: 0x%04X\n", status);
+            return -EIO;
+        }
+        
+        scan_method = method;
+    }
 
-     return err;
+    return err;
 }
 
 int stop_passive_scan(void)
