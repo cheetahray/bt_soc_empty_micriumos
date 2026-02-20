@@ -76,17 +76,18 @@ int lcd_ui_init(void);
 void lcd_ui_update(const void *param, const char *test_mode, const char *status);
 
 /**
- * @brief Display startup screen
+ * @brief Display startup screen with configuration
  * 
  * Shows:
  * - Application name
- * - Vendor name
- * - Version
- * - Initialization status
+ * - Default configuration parameters
  * 
- * @note Call this during app_init() after lcd_ui_init()
+ * @param param Pointer to test_param_t structure to display configuration
+ *              (NULL to show basic startup only)
+ * 
+ * @note Call this during app_init() after lcd_ui_init() and load_parm_cfg()
  */
-void lcd_ui_show_startup(void);
+void lcd_ui_show_startup(const void *param);
 
 /**
  * @brief Display test progress
@@ -126,6 +127,41 @@ void lcd_ui_clear(void);
  * @return true if LCD is ready for use, false otherwise
  */
 bool lcd_ui_is_ready(void);
+
+/* ==================== Selection Control (Button Navigation) ==================== */
+
+/**
+ * @brief Move selection cursor to next item
+ * 
+ * Call this when Button 0 is pressed to move the triangle indicator
+ * to the next configuration item. Wraps around after last item.
+ * 
+ * @note This updates internal state and triggers LCD refresh
+ */
+void lcd_ui_next_selection(void);
+
+/**
+ * @brief Expand current item to show sub-options
+ * 
+ * Call this when Button 1 is pressed to enter sub-menu for the
+ * currently selected item. Shows all available options for that item.
+ * Last option is always "Back" to return to main menu.
+ * 
+ * @note If item has no sub-options, this does nothing
+ */
+void lcd_ui_expand_selection(void);
+
+/**
+ * @brief Get current selection index
+ * 
+ * @return Current selected item index (0-based)
+ */
+uint8_t lcd_ui_get_selection(void);
+
+/**
+ * @brief Reset selection to first item
+ */
+void lcd_ui_reset_selection(void);
 
 /* ==================== Advanced Functions (Optional) ==================== */
 

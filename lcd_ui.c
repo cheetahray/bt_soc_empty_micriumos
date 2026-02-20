@@ -39,6 +39,32 @@
 // static GLIB_Context_t glibContext;
 static bool lcd_initialized = false;
 
+/* Selection cursor state */
+static uint8_t current_selection = 0;  // Current selected item (0-based)
+static uint8_t max_selection_items = 7;  // Total number of selectable items
+static const test_param_t *cached_param = NULL;  // Cache for redraw
+
+/* Sub-menu state */
+typedef enum {
+    LCD_MODE_MAIN_MENU,     // Main configuration menu
+    LCD_MODE_SUB_MENU       // Sub-menu for specific item
+} lcd_menu_mode_t;
+
+static lcd_menu_mode_t menu_mode = LCD_MODE_MAIN_MENU;
+static uint8_t sub_selection = 0;       // Current selection in sub-menu
+static uint8_t max_sub_items = 0;       // Number of items in current sub-menu
+
+/* Item names for display */
+static const char* item_names[] = {
+    "TxPwr",      // 0
+    "Intv",       // 1
+    "Count",      // 2
+    "PHY",        // 3
+    "Channel",    // 4
+    "NonAnon",    // 5
+    "IgnResp"     // 6
+};
+
 /* ==================== Helper Functions ==================== */
 
 /**
@@ -55,6 +81,26 @@ static void draw_text(uint8_t x, uint8_t y, const char *text)
     (void)x;
     (void)y;
     (void)text;
+}
+
+/**
+ * @brief Draw selection triangle indicator
+ * 
+ * @param x X coordinate (left edge)
+ * @param y Y coordinate (vertical center)
+ */
+static void draw_selection_triangle(uint8_t x, uint8_t y)
+{
+    // Uncomment after installing GLIB component
+    /*
+    // Draw a filled right-pointing triangle (▶)
+    // Triangle: 3 pixels wide, 5 pixels tall
+    GLIB_drawLine(&glibContext, x, y-2, x, y+2);       // Left edge
+    GLIB_drawLine(&glibContext, x+1, y-1, x+1, y+1);   // Middle
+    GLIB_drawPixel(&glibContext, x+2, y);              // Tip
+    */
+    (void)x;
+    (void)y;
 }
 
 /**
@@ -88,6 +134,50 @@ static void draw_phy_status(uint8_t x, uint8_t y, const test_param_t *param)
     }
     if (param->phy_ble4) {
         draw_text(x + offset, y, "BLE4");
+    }
+}
+
+/**
+ * @brief Get TX power string from index
+ */
+static const char* get_txpwr_string_by_idx(uint8_t idx)
+{
+    switch(idx) {
+        case 0: return "-20dBm";
+        case 1: return "-10dBm";
+        case 2: return "-5dBm";
+        case 3: return "0dBm";
+        case 4: return "+5dBm";
+        case 5: return "+10dBm";
+        default: return "?dBm";
+    }
+}
+
+/**
+ * @brief Get interval string from index
+ */
+static const char* get_interval_string_by_idx(uint8_t idx)
+{
+    switch(idx) {
+        case 0: return "20ms";
+        case 1: return "50ms";
+        case 2: return "100ms";
+        case 3: return "200ms";
+        case 4: return "500ms";
+        default: return "?ms";
+    }
+}
+
+/**
+ * @brief Get count string from index
+ */
+static const char* get_count_string_by_idx(uint8_t idx)
+{
+    switch(idx) {
+        case 0: return "100";
+        case 1: return "1000";
+        case 2: return "10000";
+        default: return "?";
     }
 }
 
@@ -187,32 +277,92 @@ int lcd_ui_init(void)
     return 0;
 }
 
-void lcd_ui_show_startup(void)
+void lcd_ui_show_startup(const void *param_ptr)
 {
     if (!lcd_initialized) {
         LCD_PRINT("[LCD] Not initialized, skipping startup screen\n");
         return;
     }
     
-    LCD_PRINT("[LCD] Showing startup screen\n");
+    const test_param_t *param = (const test_param_t *)param_ptr;
+    cached_param = param;  // Cache for redraw on selection change
+    
+    LCD_PRINT("[LCD] Showing startup screen with config (sel=%d)\n", current_selection);
     
     // Uncomment after installing GLIB component
     /*
-    GLIB_clear(&glibContext);
+    char buf[32];
     
-    // Set font
+    GLIB_clear(&glibContext);
     GLIB_setFont(&glibContext, (GLIB_Font_t *)&GLIB_FontNarrow6x8);
     
     // Title
-    draw_text(10, 20, "BLE Loss Test");
-    draw_text(10, 35, "Silicon Labs");
-    draw_text(10, 50, "Version 1.0");
+    draw_text(10, 2, "BLE Loss Test");
+    draw_text(10, 12, "Default Config:");
     
-    // Status
-    draw_text(10, 70, "Initializing...");
+    // Horizontal separator
+    GLIB_drawLineH(&glibContext, 0, 127, 22);
+    
+    if (param != NULL) {
+        uint8_t text_x = 10;  // Text starts at x=10 (leave space for triangle)
+        
+        // Line 0: TX Power
+        if (current_selection == 0) draw_selection_triangle(2, 27);
+        snprintf(buf, sizeof(buf), "TxPwr:%s", get_txpwr_string(param->txpwr));
+        draw_text(text_x, 25, buf);
+        
+        // Line 1: Interval
+        if (current_selection == 1) draw_selection_triangle(2, 37);
+        snprintf(buf, sizeof(buf), "Intv:%s", get_interval_string(param->interval_idx));
+        draw_text(text_x, 35, buf);
+        
+        // Line 2: Count
+        if (current_selection == 2) draw_selection_triangle(2, 47);
+        snprintf(buf, sizeof(buf), "Count:%s", get_count_string(param->count_idx));
+        draw_text(text_x, 45, buf);
+        
+        // Line 3: PHY Selection
+        if (current_selection == 3) draw_selection_triangle(2, 57);
+        snprintf(buf, sizeof(buf), "PHY:%s%s%s%s",
+                 param->phy_2m ? "2M " : "",
+                 param->phy_1m ? "1M " : "",
+                 param->phy_s8 ? "S8 " : "",
+                 param->phy_ble4 ? "BLE4" : "");
+        draw_text(text_x, 55, buf);
+        
+        // Line 4: Channel Status
+        if (current_selection == 4) draw_selection_triangle(2, 67);
+        if (param->inhibit_ch37 || param->inhibit_ch38 || param->inhibit_ch39) {
+            snprintf(buf, sizeof(buf), "CH:%s%s%s",
+                     param->inhibit_ch37 ? "X37 " : "O37 ",
+                     param->inhibit_ch38 ? "X38 " : "O38 ",
+                     param->inhibit_ch39 ? "X39" : "O39");
+        } else {
+            snprintf(buf, sizeof(buf), "CH:All Enabled");
+        }
+        draw_text(text_x, 65, buf);
+        
+        // Line 5: NonAnonymous
+        if (current_selection == 5) draw_selection_triangle(2, 77);
+        snprintf(buf, sizeof(buf), "NonAnon:%s", param->non_ANONYMOUS ? "YES" : "NO");
+        draw_text(text_x, 75, buf);
+        
+        // Line 6: Ignore Response
+        if (current_selection == 6) draw_selection_triangle(2, 87);
+        snprintf(buf, sizeof(buf), "IgnResp:%s", param->ignore_rcv_resp ? "YES" : "NO");
+        draw_text(text_x, 85, buf);
+        
+        // Bottom status
+        draw_text(2, 115, "BTN0:Next");
+    } else {
+        // No config provided - basic startup
+        draw_text(10, 40, "Initializing...");
+    }
     
     DMD_updateDisplay();
     */
+    
+    (void)param_ptr;  // Suppress warning when GLIB is commented out
 }
 
 void lcd_ui_update(const void *param_ptr, const char *test_mode, const char *status)
@@ -409,4 +559,222 @@ void lcd_ui_show_connection(bool connected)
     */
     
     (void)connected;
+}
+
+/* ==================== Selection Control Implementation ==================== */
+
+/**
+ * @brief Draw sub-menu screen
+ */
+static void draw_sub_menu(void)
+{
+    // Uncomment after installing GLIB component
+    /*
+    char buf[32];
+    
+    GLIB_clear(&glibContext);
+    GLIB_setFont(&glibContext, (GLIB_Font_t *)&GLIB_FontNarrow6x8);
+    
+    // Title: show which item we're editing
+    snprintf(buf, sizeof(buf), "Edit: %s", item_names[current_selection]);
+    draw_text(2, 2, buf);
+    
+    // Horizontal separator
+    GLIB_drawLineH(&glibContext, 0, 127, 12);
+    
+    uint8_t y = 18;
+    uint8_t text_x = 10;
+    
+    switch (current_selection) {
+        case 0: // TxPwr
+            max_sub_items = 7;  // 6 options + Back
+            for (uint8_t i = 0; i < 6; i++) {
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, get_txpwr_string_by_idx(i));
+                y += 10;
+            }
+            if (sub_selection == 6) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+            
+        case 1: // Interval
+            max_sub_items = 6;  // 5 options + Back
+            for (uint8_t i = 0; i < 5; i++) {
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, get_interval_string_by_idx(i));
+                y += 10;
+            }
+            if (sub_selection == 5) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+            
+        case 2: // Count
+            max_sub_items = 4;  // 3 options + Back
+            for (uint8_t i = 0; i < 3; i++) {
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, get_count_string_by_idx(i));
+                y += 10;
+            }
+            if (sub_selection == 3) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+            
+        case 3: // PHY
+            max_sub_items = 5;  // 4 options + Back
+            if (sub_selection == 0) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->phy_2m ? "[X] 2M PHY" : "[ ] 2M PHY");
+            y += 10;
+            if (sub_selection == 1) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->phy_1m ? "[X] 1M PHY" : "[ ] 1M PHY");
+            y += 10;
+            if (sub_selection == 2) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->phy_s8 ? "[X] S8 PHY" : "[ ] S8 PHY");
+            y += 10;
+            if (sub_selection == 3) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->phy_ble4 ? "[X] BLE4" : "[ ] BLE4");
+            y += 10;
+            if (sub_selection == 4) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+            
+        case 4: // Channel
+            max_sub_items = 4;  // 3 channels + Back
+            if (sub_selection == 0) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->inhibit_ch37 ? "[X] Ch37 OFF" : "[ ] Ch37 ON");
+            y += 10;
+            if (sub_selection == 1) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->inhibit_ch38 ? "[X] Ch38 OFF" : "[ ] Ch38 ON");
+            y += 10;
+            if (sub_selection == 2) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, cached_param->inhibit_ch39 ? "[X] Ch39 OFF" : "[ ] Ch39 ON");
+            y += 10;
+            if (sub_selection == 3) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+            
+        case 5: // NonAnonymous
+            max_sub_items = 3;  // ON, OFF, Back
+            if (sub_selection == 0) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "ON");
+            y += 10;
+            if (sub_selection == 1) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "OFF");
+            y += 10;
+            if (sub_selection == 2) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+            
+        case 6: // IgnoreResponse
+            max_sub_items = 3;  // ON, OFF, Back
+            if (sub_selection == 0) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "ON");
+            y += 10;
+            if (sub_selection == 1) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "OFF");
+            y += 10;
+            if (sub_selection == 2) draw_selection_triangle(2, y+2);
+            draw_text(text_x, y, "< Back");
+            break;
+    }
+    
+    // Bottom hint
+    draw_text(2, 115, "BTN0:Next BTN1:Sel");
+    
+    DMD_updateDisplay();
+    */
+}
+
+void lcd_ui_next_selection(void)
+{
+    if (!lcd_initialized) {
+        return;
+    }
+    
+    if (menu_mode == LCD_MODE_MAIN_MENU) {
+        // Move to next item in main menu
+        current_selection++;
+        
+        // Wrap around to first item
+        if (current_selection >= max_selection_items) {
+            current_selection = 0;
+        }
+        
+        LCD_PRINT("[LCD] Main menu selection: %d\n", current_selection);
+        
+        // Redraw main menu
+        if (cached_param != NULL) {
+            lcd_ui_show_startup(cached_param);
+        }
+    } else {
+        // Move to next item in sub-menu
+        sub_selection++;
+        
+        // Wrap around
+        if (sub_selection >= max_sub_items) {
+            sub_selection = 0;
+        }
+        
+        LCD_PRINT("[LCD] Sub-menu selection: %d/%d\n", sub_selection, max_sub_items-1);
+        
+        // Redraw sub-menu
+        draw_sub_menu();
+    }
+}
+
+void lcd_ui_expand_selection(void)
+{
+    if (!lcd_initialized) {
+        return;
+    }
+    
+    if (menu_mode == LCD_MODE_MAIN_MENU) {
+        // Enter sub-menu for current item
+        LCD_PRINT("[LCD] Expanding item %d: %s\n", current_selection, item_names[current_selection]);
+        
+        menu_mode = LCD_MODE_SUB_MENU;
+        sub_selection = 0;
+        
+        // Draw sub-menu
+        draw_sub_menu();
+    } else {
+        // In sub-menu: check if "Back" is selected
+        bool is_back = (sub_selection == (max_sub_items - 1));
+        
+        if (is_back) {
+            // Return to main menu
+            LCD_PRINT("[LCD] Back to main menu\n");
+            menu_mode = LCD_MODE_MAIN_MENU;
+            sub_selection = 0;
+            
+            // Redraw main menu
+            if (cached_param != NULL) {
+                lcd_ui_show_startup(cached_param);
+            }
+        } else {
+            // TODO: Apply the selected sub-option
+            LCD_PRINT("[LCD] Selected sub-option %d for item %s\n", 
+                     sub_selection, item_names[current_selection]);
+            
+            // For now, just go back to main menu after selection
+            // In future, this should update the configuration
+            menu_mode = LCD_MODE_MAIN_MENU;
+            
+            if (cached_param != NULL) {
+                lcd_ui_show_startup(cached_param);
+            }
+        }
+    }
+}
+
+uint8_t lcd_ui_get_selection(void)
+{
+    return current_selection;
+}
+
+void lcd_ui_reset_selection(void)
+{
+    current_selection = 0;
+    menu_mode = LCD_MODE_MAIN_MENU;
+    sub_selection = 0;
+    LCD_PRINT("[LCD] Selection reset to first item\n");
 }

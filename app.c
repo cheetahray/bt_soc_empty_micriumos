@@ -33,6 +33,8 @@
 #include "app.h"
 #include "losstst_svc.h"
 #include "ble_log.h"
+#include "lcd_ui.h"
+#include "sl_simple_button_instances.h"
 #include <stdio.h>
 
 /* Debug print macro - outputs to BLE if connected, otherwise to UART */
@@ -173,6 +175,13 @@ void app_init(void)
     /* Initialize BLE log service */
     ble_log_init();
     
+    /* Initialize LCD UI */
+    if (lcd_ui_init() == 0) {
+        DEBUG_PRINT("[LCD] Display initialized\n");
+    } else {
+        DEBUG_PRINT("[LCD] Failed to initialize display\n");
+    }
+    
     /* Initialize BLE loss test service */
     err = losstst_init();
     if (err) {
@@ -186,6 +195,9 @@ void app_init(void)
     /* Load default parameters */
     load_parm_cfg();
     
+    /* Show startup screen with loaded configuration */
+    lcd_ui_show_startup(&round_test_parm);
+
     DEBUG_PRINT("=== Application Ready ===\n");
     DEBUG_PRINT("[BLE LOG] Log characteristic handle: %d\n", BLE_LOG_CHARACTERISTIC_HANDLE);
 }
@@ -554,5 +566,31 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     default:
       break;
   }
+}
+
+/**************************************************************************//**
+ * Button callback handler.
+ * This is called when a button state change event is detected.
+ *****************************************************************************/
+void sl_button_on_change(const sl_button_t *handle)
+{
+  // Button 0: Navigate to next item (in main menu or sub-menu)
+  if (handle == &sl_button_btn0) {
+    if (sl_button_get_state(handle) == SL_SIMPLE_BUTTON_PRESSED) {
+      DEBUG_PRINT("[BTN] Button 0 pressed - next selection\n");
+      lcd_ui_next_selection();
+    }
+  }
+  
+  // Button 1: Expand current item / Select sub-option
+  // Note: Check if BTN1 exists in your configuration
+  #ifdef sl_button_btn1
+  if (handle == &sl_button_btn1) {
+    if (sl_button_get_state(handle) == SL_SIMPLE_BUTTON_PRESSED) {
+      DEBUG_PRINT("[BTN] Button 1 pressed - expand/select\n");
+      lcd_ui_expand_selection();
+    }
+  }
+  #endif
 }
 
