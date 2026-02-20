@@ -5,3 +5,4 @@ cmake_gcc/build/base
 *.bin
 *.o
 cmake_gcc/build
+.projectlinkstore

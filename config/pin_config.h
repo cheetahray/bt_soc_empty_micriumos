@@ -109,6 +109,46 @@
 // [I2C0]$
 
 // $[EUSART0]
+// EUSART0 CTS on PA00
+#ifndef EUSART0_CTS_PORT                        
+#define EUSART0_CTS_PORT                         SL_GPIO_PORT_A
+#endif
+#ifndef EUSART0_CTS_PIN                         
+#define EUSART0_CTS_PIN                          0
+#endif
+
+// EUSART0 RTS on PA07
+#ifndef EUSART0_RTS_PORT                        
+#define EUSART0_RTS_PORT                         SL_GPIO_PORT_A
+#endif
+#ifndef EUSART0_RTS_PIN                         
+#define EUSART0_RTS_PIN                          7
+#endif
+
+// EUSART0 RX on PA06
+#ifndef EUSART0_RX_PORT                         
+#define EUSART0_RX_PORT                          SL_GPIO_PORT_A
+#endif
+#ifndef EUSART0_RX_PIN                          
+#define EUSART0_RX_PIN                           6
+#endif
+
+// EUSART0 SCLK on PC02
+#ifndef EUSART0_SCLK_PORT                       
+#define EUSART0_SCLK_PORT                        SL_GPIO_PORT_C
+#endif
+#ifndef EUSART0_SCLK_PIN                        
+#define EUSART0_SCLK_PIN                         2
+#endif
+
+// EUSART0 TX on PC00
+#ifndef EUSART0_TX_PORT                         
+#define EUSART0_TX_PORT                          SL_GPIO_PORT_C
+#endif
+#ifndef EUSART0_TX_PIN                          
+#define EUSART0_TX_PIN                           0
+#endif
+
 // [EUSART0]$
 
 // $[PTI]

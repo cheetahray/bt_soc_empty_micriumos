@@ -11,15 +11,19 @@
 #include "sl_bluetooth.h"
 #include "sl_debug_swo.h"
 #include "sl_gpio.h"
+#include "sl_iostream_init_eusart_instances.h"
 #include "sl_mbedtls.h"
+#include "sl_simple_button_instances.h"
 #include "psa/crypto.h"
 #include "sl_se_manager.h"
 #include "sli_protocol_crypto.h"
 #include "cpu.h"
 #include "sli_crypto.h"
+#include "sl_iostream_init_instances.h"
 #include "cmsis_os2.h"
 #include "nvm3_default.h"
 #include "sl_cos.h"
+#include "sl_iostream_handles.h"
 
 void sli_driver_permanent_allocation(void)
 {
@@ -62,6 +66,7 @@ void sl_driver_init(void)
 {
   sl_debug_swo_init();
   sl_gpio_init();
+  sl_simple_button_init_instances();
   sl_cos_send_config();
 }
 
@@ -74,6 +79,8 @@ void sl_service_init(void)
   sli_protocol_crypto_init();
   sli_crypto_init();
   sli_aes_seed_mask();
+  sl_iostream_init_instances_stage_1();
+  sl_iostream_init_instances_stage_2();
 }
 
 void sl_stack_init(void)
@@ -86,5 +93,15 @@ void sl_stack_init(void)
 
 void sl_internal_app_init(void)
 {
+}
+
+void sl_iostream_init_instances_stage_1(void)
+{
+  sl_iostream_eusart_init_instances();
+}
+
+void sl_iostream_init_instances_stage_2(void)
+{
+  sl_iostream_set_console_instance();
 }
 

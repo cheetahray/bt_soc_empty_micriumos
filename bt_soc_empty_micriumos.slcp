@@ -79,9 +79,6 @@ component:
   id: bluetooth_feature_system
 - package: simplicity_sdk
   vendor: silabs
-  id: bluetooth_hci_iostream_uart
-- package: simplicity_sdk
-  vendor: silabs
   id: bluetooth_stack
 - package: simplicity_sdk
   vendor: silabs
@@ -103,6 +100,18 @@ component:
   id: gatt_service_device_information_override
 - package: simplicity_sdk
   vendor: silabs
+  id: glib
+- package: simplicity_sdk
+  vendor: silabs
+  id: iostream_recommended_stream
+- package: simplicity_sdk
+  vendor: silabs
+  id: iostream_retarget_stdio
+- package: simplicity_sdk
+  vendor: silabs
+  id: memlcd_eusart
+- package: simplicity_sdk
+  vendor: silabs
   id: memory_manager
 - package: simplicity_sdk
   vendor: silabs
@@ -113,6 +122,11 @@ component:
 - package: simplicity_sdk
   vendor: silabs
   id: rail_util_pti
+- package: simplicity_sdk
+  instance:
+  - btn0
+  vendor: silabs
+  id: simple_button
 - package: simplicity_sdk
   vendor: silabs
   id: sl_main
