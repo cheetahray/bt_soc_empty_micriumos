@@ -6,3 +6,4 @@ cmake_gcc/build/base
 *.o
 cmake_gcc/build
 .projectlinkstore
+autogen/sbom

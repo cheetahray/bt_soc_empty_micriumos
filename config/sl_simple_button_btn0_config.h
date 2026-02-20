@@ -48,9 +48,12 @@
 
 // <gpio> SL_SIMPLE_BUTTON_BTN0
 // $[GPIO_SL_SIMPLE_BUTTON_BTN0]
+#ifndef SL_SIMPLE_BUTTON_BTN0_PORT              
 #define SL_SIMPLE_BUTTON_BTN0_PORT               SL_GPIO_PORT_B
+#endif
+#ifndef SL_SIMPLE_BUTTON_BTN0_PIN               
 #define SL_SIMPLE_BUTTON_BTN0_PIN                0
-
+#endif
 // [GPIO_SL_SIMPLE_BUTTON_BTN0]$
 
 // <<< sl:end pin_tool >>>

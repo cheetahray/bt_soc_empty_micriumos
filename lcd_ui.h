@@ -84,10 +84,11 @@ void lcd_ui_update(const void *param, const char *test_mode, const char *status)
  * 
  * @param param Pointer to test_param_t structure to display configuration
  *              (NULL to show basic startup only)
+ *              Note: Non-const to allow Button 1 editing functionality
  * 
  * @note Call this during app_init() after lcd_ui_init() and load_parm_cfg()
  */
-void lcd_ui_show_startup(const void *param);
+void lcd_ui_show_startup(void *param);
 
 /**
  * @brief Display test progress

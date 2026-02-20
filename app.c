@@ -35,6 +35,7 @@
 #include "ble_log.h"
 #include "lcd_ui.h"
 #include "sl_simple_button_instances.h"
+#include "cmsis_os2.h"
 #include <stdio.h>
 
 /* Debug print macro - outputs to BLE if connected, otherwise to UART */
@@ -48,6 +49,11 @@
 
 // The advertising set handle allocated from Bluetooth stack.
 static uint8_t advertising_set_handle = 0xff;
+
+// Event flags for button handling (to avoid LCD operations in interrupt context)
+static osEventFlagsId_t button_event_flags = NULL;
+#define BTN0_PRESSED_FLAG  (1U << 0)  // Button 0 pressed event
+#define BTN1_PRESSED_FLAG  (1U << 1)  // Button 1 pressed event
 
 // Advertising control flag: 0 = sl_bt_on_event owns advertising, 1 = range test owns advertising
 static volatile uint8_t adv_owner_flag = 0;
@@ -175,6 +181,12 @@ void app_init(void)
     /* Initialize BLE log service */
     ble_log_init();
     
+    /* Create event flags for button handling */
+    button_event_flags = osEventFlagsNew(NULL);
+    if (button_event_flags == NULL) {
+        DEBUG_PRINT("[BTN] ERROR: Failed to create event flags\n");
+    }
+    
     /* Initialize LCD UI */
     if (lcd_ui_init() == 0) {
         DEBUG_PRINT("[LCD] Display initialized\n");
@@ -211,20 +223,38 @@ void app_process_action(void)
     // This is will run each time app_proceed() is called.                     //
     // Do not call blocking functions from here!                               //
     /////////////////////////////////////////////////////////////////////////////
+    
+    /* Handle button events from interrupt context */
+    if (button_event_flags != NULL) {
+        uint32_t flags = osEventFlagsGet(button_event_flags);
+        
+        if (flags & BTN0_PRESSED_FLAG) {
+            osEventFlagsClear(button_event_flags, BTN0_PRESSED_FLAG);
+            DEBUG_PRINT("[BTN] Processing Button 0 - expand/select\n");
+            lcd_ui_expand_selection();
+        }
+        
+        if (flags & BTN1_PRESSED_FLAG) {
+            osEventFlagsClear(button_event_flags, BTN1_PRESSED_FLAG);
+            DEBUG_PRINT("[BTN] Processing Button 1 - next selection\n");
+            lcd_ui_next_selection();
+        }
+    }
+    
     static bool initialized = false;
     static uint32_t uptime_barrier_ms = 0;
     bool re_sche = false;
     
     /* One-time initialization delay */
-    if (!initialized) {
-        uptime_barrier_ms = sl_sleeptimer_get_tick_count() + 2000;
+    // if (!initialized) {
+    //     uptime_barrier_ms = sl_sleeptimer_get_tick_count() + 2000;
         
-        /* Wait for initial startup delay */
-        if (sl_sleeptimer_get_tick_count() < uptime_barrier_ms) {
-            return;
-        }
-        initialized = true;
-    }
+    //     /* Wait for initial startup delay */
+    //     if (sl_sleeptimer_get_tick_count() < uptime_barrier_ms) {
+    //         return;
+    //     }
+    //     initialized = true;
+    // }
     
     /* ========== Task Selection Phase ========== */
     if (!task_ENVMON && !task_SCANNER && !task_SENDER && !task_NUMCAST) {
@@ -463,7 +493,8 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     // Do not call any stack command before receiving this boot event!
         case sl_bt_evt_system_boot_id:
             DEBUG_PRINT("[ADV] System boot - initializing\n");
-            // 總是建立 advertising set（無論誰控制）
+            // 建立手機連接用的 advertising set
+            // losstst_svc 已經使用 0-4 (共 5 個)，這是第 6 個
             sc = sl_bt_advertiser_create_set(&advertising_set_handle);
             app_assert_status(sc);
             
@@ -566,31 +597,36 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     default:
       break;
   }
+  
+  // Signal the application task to proceed after BLE event processing
+  app_proceed();
 }
 
 /**************************************************************************//**
  * Button callback handler.
- * This is called when a button state change event is detected.
+ * This is called in INTERRUPT CONTEXT - keep it fast!
+ * Do NOT call LCD functions directly - use event flags instead.
  *****************************************************************************/
 void sl_button_on_change(const sl_button_t *handle)
 {
-  // Button 0: Navigate to next item (in main menu or sub-menu)
+  // Button 0: Expand current item / Select sub-option
   if (handle == &sl_button_btn0) {
     if (sl_button_get_state(handle) == SL_SIMPLE_BUTTON_PRESSED) {
-      DEBUG_PRINT("[BTN] Button 0 pressed - next selection\n");
-      lcd_ui_next_selection();
+      // Set flag for processing in task context
+      if (button_event_flags != NULL) {
+        osEventFlagsSet(button_event_flags, BTN0_PRESSED_FLAG);
+      }
     }
   }
   
-  // Button 1: Expand current item / Select sub-option
-  // Note: Check if BTN1 exists in your configuration
-  #ifdef sl_button_btn1
+  // Button 1: Navigate to next item (in main menu or sub-menu)
   if (handle == &sl_button_btn1) {
     if (sl_button_get_state(handle) == SL_SIMPLE_BUTTON_PRESSED) {
-      DEBUG_PRINT("[BTN] Button 1 pressed - expand/select\n");
-      lcd_ui_expand_selection();
+      // Set flag for processing in task context
+      if (button_event_flags != NULL) {
+        osEventFlagsSet(button_event_flags, BTN1_PRESSED_FLAG);
+      }
     }
   }
-  #endif
 }
 
