@@ -15,6 +15,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "sl_bt_api.h"
 
 /* ================== Type Definitions ================== */
 
@@ -246,6 +247,14 @@ void losstst_adv_sent_handler(uint8_t adv_handle);
  * Application-defined function for sender finalization.
  */
 void sender_finit(void);
+
+void sl_bt_scanner_process_legacy_report(const bd_addr *addr, int8_t rssi,
+                                        const uint8_t *ad_data, uint16_t ad_len);
+
+void sl_bt_scanner_process_extended_report(const bd_addr *addr, int8_t rssi,
+                                         int8_t tx_power, uint8_t primary_phy,
+                                         uint8_t secondary_phy,
+                                         const uint8_t *ad_data, uint16_t ad_len);
 
 #ifdef __cplusplus
 }

@@ -16,7 +16,6 @@
 
 /* Silicon Labs SDK headers */
 #include "sl_status.h"
-#include "sl_bt_api.h"
 #include "gatt_db.h"
 #include "sl_sleeptimer.h"
 

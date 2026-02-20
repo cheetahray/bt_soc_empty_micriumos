@@ -185,7 +185,7 @@ void app_init(void)
     
     /* Load default parameters */
     load_parm_cfg();
-
+    
     DEBUG_PRINT("=== Application Ready ===\n");
     DEBUG_PRINT("[BLE LOG] Log characteristic handle: %d\n", BLE_LOG_CHARACTERISTIC_HANDLE);
 }
@@ -521,7 +521,34 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     case sl_bt_evt_advertiser_timeout_id:
       // 手动调用我们的处理函数
       losstst_adv_sent_handler(evt->data.evt_advertiser_timeout.handle);
+      break;    
+    case sl_bt_evt_scanner_legacy_advertisement_report_id: {
+      sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
+          &evt->data.evt_scanner_legacy_advertisement_report;
+      
+      sl_bt_scanner_process_legacy_report(
+          &scan_evt->address,
+          scan_evt->rssi,
+          scan_evt->data.data,
+          scan_evt->data.len
+      );
       break;
+    }
+    case sl_bt_evt_scanner_extended_advertisement_report_id: {
+      sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
+          &evt->data.evt_scanner_extended_advertisement_report;
+      
+      sl_bt_scanner_process_extended_report(
+          &scan_evt->address,
+          scan_evt->rssi,
+          scan_evt->tx_power,
+          scan_evt->primary_phy,
+          scan_evt->secondary_phy,
+          scan_evt->data.data,
+          scan_evt->data.len
+      );
+      break;
+    }
     // -------------------------------
     // Default event handler.
     default:
