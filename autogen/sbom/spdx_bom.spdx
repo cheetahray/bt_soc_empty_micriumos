@@ -13,7 +13,7 @@ DocumentNamespace: https://silabs.com
 
 ## Creation Information
 Creator: Organization: Silicon Laboratories, Inc.
-Created: 2026-02-17T15:27:58Z
+Created: 2026-02-19T18:59:03Z
 ## Relationships
 Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-silabs.simplicity_sdk-2025.12.1
 
@@ -28,6 +28,9 @@ PackageSupplier: Organization: Silicon Laboratories, Inc.
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-EFR32MG27C140F768IM40
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-app_assert
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-app_os_helper
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_gatt
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_gatt_server
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_legacy_advertiser
@@ -189,9 +192,20 @@ Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.si
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_main_init
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_main_process_action
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-gpio
-Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser
-Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner
-Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_iostream_uart
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv_core
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_sleep
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_ldma
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-cmsis_os2_ext_task_register
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-gpiointerrupt
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_uart_common
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_rmu
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_string
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1 CONTAINS SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart_core
 
 ## Package Information
 PackageName: EFR32MG27C140F768IM40
@@ -225,6 +239,39 @@ PackageSupplier: Organization: Silicon Laboratories, Inc.
 PackageLicenseConcluded: Zlib
 ## Relationships
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-app_os_helper CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: Bluetooth Connection Phy Update
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: MSLA
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: Extended Advertising
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: MSLA
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: Scanner for extended advertisements
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: MSLA
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
 
 ## Package Information
 PackageName: GATT Client
@@ -2071,34 +2118,155 @@ PackageLicenseConcluded: Zlib
 Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-gpio CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
 
 ## Package Information
-PackageName: Extended Advertising
-SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser
+PackageName: HCI UART Handler
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_iostream_uart
 PackageVersion: 2025.12.1
 PrimaryPackagePurpose: LIBRARY
 PackageDownloadLocation: NOASSERTION
 PackageSupplier: Organization: Silicon Laboratories, Inc.
 PackageLicenseConcluded: MSLA
 ## Relationships
-Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_iostream_uart CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
 
 ## Package Information
-PackageName: Scanner for extended advertisements
-SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner
+PackageName: DMADRV Core
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv_core
 PackageVersion: 2025.12.1
 PrimaryPackagePurpose: LIBRARY
 PackageDownloadLocation: NOASSERTION
 PackageSupplier: Organization: Silicon Laboratories, Inc.
-PackageLicenseConcluded: MSLA
+PackageLicenseConcluded: Zlib
 ## Relationships
-Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv_core CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
 
 ## Package Information
-PackageName: Bluetooth Connection Phy Update
-SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update
+PackageName: IO Stream
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: HCI Sleep Component
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_sleep
 PackageVersion: 2025.12.1
 PrimaryPackagePurpose: LIBRARY
 PackageDownloadLocation: NOASSERTION
 PackageSupplier: Organization: Silicon Laboratories, Inc.
 PackageLicenseConcluded: MSLA
 ## Relationships
-Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_sleep CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: LDMA
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_ldma
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_ldma CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: Task registers abstraction layer
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-cmsis_os2_ext_task_register
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-cmsis_os2_ext_task_register CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: Bluetooth Controller HCI
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: MSLA
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: DMADRV
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: GPIOINT
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-gpiointerrupt
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-gpiointerrupt CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: IO Stream: EUSART
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: IO Stream: Common code for UART-type streams
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_uart_common
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_uart_common CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: RMU
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_rmu
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_rmu CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: String Functions
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_string
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_string CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1
+
+## Package Information
+PackageName: IO Stream: EUSART Core
+SPDXID: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart_core
+PackageVersion: 2025.12.1
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart_core CONTAINED_BY SPDXRef-silabs.simplicity_sdk-2025.12.1

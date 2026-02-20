@@ -4,9 +4,9 @@
         {
             "name": "default_config",
             "includePath": [
-                "${workspaceFolder}/autogen",
                 "${workspaceFolder}/config",
                 "${workspaceFolder}/config/btconf",
+                "${workspaceFolder}/autogen",
                 "${workspaceFolder}/.",
                 "${workspaceFolder}/simplicity_sdk_2025.12.1/devices/platform/Device/SiliconLabs/EFR32MG27/Include",
                 "${workspaceFolder}/simplicity_sdk_2025.12.1/platform_common_apps/app/common/util/app_assert",

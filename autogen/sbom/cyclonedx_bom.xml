@@ -10,7 +10,7 @@ referenced in this SBOM.)
 -->
 <bom xmlns="http://cyclonedx.org/schema/bom/1.6" version="1">
   <metadata>
-    <timestamp>2026-02-17T15:27:58Z</timestamp>
+    <timestamp>2026-02-19T18:59:03Z</timestamp>
     <authors>
       <author>
         <name>Silicon Laboratories, Inc.</name>
@@ -53,6 +53,36 @@ referenced in this SBOM.)
 	      </supplier>
           <licenses>
             <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_connection_phy_update" type="library">
+          <name>Bluetooth Connection Phy Update</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>MSLA</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_extended_advertiser" type="library">
+          <name>Extended Advertising</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>MSLA</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_extended_scanner" type="library">
+          <name>Scanner for extended advertisements</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>MSLA</expression>
           </licenses>
         </component>
         <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_gatt" type="library">
@@ -1759,8 +1789,8 @@ referenced in this SBOM.)
             <expression>Zlib</expression>
           </licenses>
         </component>
-        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_extended_advertiser" type="library">
-          <name>Extended Advertising</name>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_hci_iostream_uart" type="library">
+          <name>HCI UART Handler</name>
           <version>2025.12.1</version>
 	      <supplier>
 	        <name>Silicon Laboratories, Inc.</name>
@@ -1769,8 +1799,28 @@ referenced in this SBOM.)
             <expression>MSLA</expression>
           </licenses>
         </component>
-        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_extended_scanner" type="library">
-          <name>Scanner for extended advertisements</name>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:dmadrv_core" type="library">
+          <name>DMADRV Core</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:iostream" type="library">
+          <name>IO Stream</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_hci_sleep" type="library">
+          <name>HCI Sleep Component</name>
           <version>2025.12.1</version>
 	      <supplier>
 	        <name>Silicon Laboratories, Inc.</name>
@@ -1779,14 +1829,104 @@ referenced in this SBOM.)
             <expression>MSLA</expression>
           </licenses>
         </component>
-        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_feature_connection_phy_update" type="library">
-          <name>Bluetooth Connection Phy Update</name>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:emlib_ldma" type="library">
+          <name>LDMA</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:cmsis_os2_ext_task_register" type="library">
+          <name>Task registers abstraction layer</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:bluetooth_hci" type="library">
+          <name>Bluetooth Controller HCI</name>
           <version>2025.12.1</version>
 	      <supplier>
 	        <name>Silicon Laboratories, Inc.</name>
 	      </supplier>
           <licenses>
             <expression>MSLA</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:dmadrv" type="library">
+          <name>DMADRV</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:gpiointerrupt" type="library">
+          <name>GPIOINT</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:iostream_eusart" type="library">
+          <name>IO Stream: EUSART</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:iostream_uart_common" type="library">
+          <name>IO Stream: Common code for UART-type streams</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:emlib_rmu" type="library">
+          <name>RMU</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:sl_string" type="library">
+          <name>String Functions</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
+          </licenses>
+        </component>
+        <component bom-ref="silabs.simplicity_sdk:2025.12.1:iostream_eusart_core" type="library">
+          <name>IO Stream: EUSART Core</name>
+          <version>2025.12.1</version>
+	      <supplier>
+	        <name>Silicon Laboratories, Inc.</name>
+	      </supplier>
+          <licenses>
+            <expression>Zlib</expression>
           </licenses>
         </component>
       </components>

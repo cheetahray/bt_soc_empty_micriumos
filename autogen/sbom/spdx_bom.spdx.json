@@ -5,7 +5,7 @@
   "name" : "Silicon-Laboratories",
   "documentNamespace" : "https://silabs.com",
   "creationInfo" : {
-    "created" : "2026-02-17T15:27:58Z",
+    "created" : "2026-02-19T18:59:03Z",
     "creators" : [ "Tool: Silicon Labs Configuration Tooling" ]
   },
   "comment" : "TERMS OF USE - SILICON LABORATORIES INC.\n(With respect to Silicon Labs software components, this Software Bill of Materials (SBOM) is based upon Silicon Labs'\nreview and analysis of the code version when released.  It is provided \"AS IS\" and does not modify, change or alter\nthe terms or conditions of your use of Silicon Labs' software and/or SDKs based upon license terms and/or agreements\nassociated with this software or SDKs when distributed to you, received by you, or installed by you.  Further, no\nwarranties or obligations are created by this SBOM.  It is your obligation to comply with the terms of licenses\nreferenced in this SBOM.)",
@@ -41,6 +41,30 @@
     "downloadLocation" : "NOASSERTION",
     "supplier" : "Organization: Silicon Laboratories, Inc.",
     "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update",
+    "name" : "Bluetooth Connection Phy Update",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "MSLA"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser",
+    "name" : "Extended Advertising",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "MSLA"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner",
+    "name" : "Scanner for extended advertisements",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "MSLA"
   }, {
     "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_gatt",
     "name" : "GATT Client",
@@ -1399,29 +1423,117 @@
     "supplier" : "Organization: Silicon Laboratories, Inc.",
     "licenseConcluded" : "Zlib"
   }, {
-    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser",
-    "name" : "Extended Advertising",
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_iostream_uart",
+    "name" : "HCI UART Handler",
     "versionInfo" : "2025.12.1",
     "primaryPackagePurpose" : "LIBRARY",
     "downloadLocation" : "NOASSERTION",
     "supplier" : "Organization: Silicon Laboratories, Inc.",
     "licenseConcluded" : "MSLA"
   }, {
-    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner",
-    "name" : "Scanner for extended advertisements",
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv_core",
+    "name" : "DMADRV Core",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream",
+    "name" : "IO Stream",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_sleep",
+    "name" : "HCI Sleep Component",
     "versionInfo" : "2025.12.1",
     "primaryPackagePurpose" : "LIBRARY",
     "downloadLocation" : "NOASSERTION",
     "supplier" : "Organization: Silicon Laboratories, Inc.",
     "licenseConcluded" : "MSLA"
   }, {
-    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update",
-    "name" : "Bluetooth Connection Phy Update",
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_ldma",
+    "name" : "LDMA",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-cmsis_os2_ext_task_register",
+    "name" : "Task registers abstraction layer",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci",
+    "name" : "Bluetooth Controller HCI",
     "versionInfo" : "2025.12.1",
     "primaryPackagePurpose" : "LIBRARY",
     "downloadLocation" : "NOASSERTION",
     "supplier" : "Organization: Silicon Laboratories, Inc.",
     "licenseConcluded" : "MSLA"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv",
+    "name" : "DMADRV",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-gpiointerrupt",
+    "name" : "GPIOINT",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart",
+    "name" : "IO Stream: EUSART",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_uart_common",
+    "name" : "IO Stream: Common code for UART-type streams",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_rmu",
+    "name" : "RMU",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_string",
+    "name" : "String Functions",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
+  }, {
+    "SPDXID" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart_core",
+    "name" : "IO Stream: EUSART Core",
+    "versionInfo" : "2025.12.1",
+    "primaryPackagePurpose" : "LIBRARY",
+    "downloadLocation" : "NOASSERTION",
+    "supplier" : "Organization: Silicon Laboratories, Inc.",
+    "licenseConcluded" : "Zlib"
   } ],
   "relationships" : [ {
     "spdxElementId" : "SPDXRef-DOCUMENT",
@@ -1438,6 +1550,18 @@
   }, {
     "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
     "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-app_os_helper",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner",
     "relationshipType" : "CONTAINS"
   }, {
     "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
@@ -2105,15 +2229,59 @@
     "relationshipType" : "CONTAINS"
   }, {
     "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
-    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_advertiser",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_iostream_uart",
     "relationshipType" : "CONTAINS"
   }, {
     "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
-    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_extended_scanner",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv_core",
     "relationshipType" : "CONTAINS"
   }, {
     "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
-    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_feature_connection_phy_update",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci_sleep",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_ldma",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-cmsis_os2_ext_task_register",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-bluetooth_hci",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-dmadrv",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-gpiointerrupt",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_uart_common",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-emlib_rmu",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-sl_string",
+    "relationshipType" : "CONTAINS"
+  }, {
+    "spdxElementId" : "SPDXRef-silabs.simplicity_sdk-2025.12.1",
+    "relatedSpdxElement" : "SPDXRef-silabs.simplicity_sdk-2025.12.1-iostream_eusart_core",
     "relationshipType" : "CONTAINS"
   } ]
 }

@@ -32,13 +32,27 @@
 #include "app_assert.h"
 #include "app.h"
 #include "losstst_svc.h"
+#include "ble_log.h"
 #include <stdio.h>
+
+/* Debug print macro - outputs to BLE if connected, otherwise to UART */
+#define DEBUG_PRINT(fmt, ...) do { \
+    if (ble_log_is_connected()) { \
+        BLE_PRINTF(fmt, ##__VA_ARGS__); \
+    } else { \
+        printf(fmt, ##__VA_ARGS__); \
+    } \
+} while(0)
 
 // The advertising set handle allocated from Bluetooth stack.
 static uint8_t advertising_set_handle = 0xff;
 
 // Advertising control flag: 0 = sl_bt_on_event owns advertising, 1 = range test owns advertising
 static volatile uint8_t adv_owner_flag = 0;
+
+// BLE Log characteristic handle
+// Log Output characteristic value handle (0x1b = 27) from gatt_db.c
+#define BLE_LOG_CHARACTERISTIC_HANDLE  27  
 static uint8_t current_connection = 0xFF;
 /* ================== Global Variables ================== */
 
@@ -156,10 +170,13 @@ void app_init(void)
 {
     int err;
     
+    /* Initialize BLE log service */
+    ble_log_init();
+    
     /* Initialize BLE loss test service */
     err = losstst_init();
     if (err) {
-        printf("ERROR: losstst_init failed: %d\n", err);
+        DEBUG_PRINT("ERROR: losstst_init failed: %d\n", err);
         /* Continue anyway - some features may still work */
     }
     
@@ -169,7 +186,8 @@ void app_init(void)
     /* Load default parameters */
     load_parm_cfg();
 
-    printf("=== Application Ready ===\n");
+    DEBUG_PRINT("=== Application Ready ===\n");
+    DEBUG_PRINT("[BLE LOG] Log characteristic handle: %d\n", BLE_LOG_CHARACTERISTIC_HANDLE);
 }
 
 // Application Process Action.
@@ -248,14 +266,14 @@ void app_process_action(void)
         if (task_SCANNER || task_SENDER || task_NUMCAST || task_ENVMON) {
             // 切換旗標，range test 取得廣播控制權
             if (adv_owner_flag == 0) {
-                printf("[ADV] Switching control to range test\n");
+                DEBUG_PRINT("[ADV] Switching control to range test\n");
                 adv_owner_flag = 1;
                 
                 // 停止 sl_bt_on_event 的廣播（如果有）
                 if (advertising_set_handle != 0xff) {
                     sl_status_t sc = sl_bt_advertiser_stop(advertising_set_handle);
                     if (sc != SL_STATUS_OK) {
-                        printf("[ADV] Warning: Failed to stop advertising: 0x%04X\n", (unsigned int)sc);
+                        DEBUG_PRINT("[ADV] Warning: Failed to stop advertising: 0x%04X\n", (unsigned int)sc);
                     }
                 }
             }
@@ -309,7 +327,7 @@ void app_process_action(void)
             task_NUMCAST = false;
             // Range test 被中斷，需要恢復廣播控制權
             if (adv_owner_flag == 1) {
-                printf("[ADV] Range test interrupted during setup wait, restoring advertising control\n");
+                DEBUG_PRINT("[ADV] Range test interrupted during setup wait, restoring advertising control\n");
                 adv_owner_flag = 0;
                 // 恢復廣播
                 if (current_connection == 0xFF) {  // 只在沒有連線時重啟廣播
@@ -352,7 +370,7 @@ void app_process_action(void)
             task_NUMCAST = false;
             // Range test 被中斷，需要恢復廣播控制權
             if (adv_owner_flag == 1) {
-                printf("[ADV] Range test interrupted, restoring advertising control\n");
+                DEBUG_PRINT("[ADV] Range test interrupted, restoring advertising control\n");
                 adv_owner_flag = 0;
                 // 恢復廣播
                 if (current_connection == 0xFF) {  // 只在沒有連線時重啟廣播
@@ -397,7 +415,7 @@ void app_process_action(void)
     }
     // 若所有 range test 任務都結束，切回 sl_bt_on_event 控制權並恢復廣播
     if (!task_ENVMON && !task_SCANNER && !task_SENDER && !task_NUMCAST && adv_owner_flag == 1) {
-        printf("[ADV] Range test completed, restoring advertising control\n");
+        DEBUG_PRINT("[ADV] Range test completed, restoring advertising control\n");
         adv_owner_flag = 0;
         
         // 重新啟動 sl_bt_on_event 的廣播（只在沒有連線時）
@@ -410,7 +428,7 @@ void app_process_action(void)
                                                    sl_bt_legacy_advertiser_connectable);
             }
             if (sc != SL_STATUS_OK) {
-                printf("[ADV] Warning: Failed to restart advertising: 0x%04X\n", (unsigned int)sc);
+                DEBUG_PRINT("[ADV] Warning: Failed to restart advertising: 0x%04X\n", (unsigned int)sc);
             }
         }
     }
@@ -432,14 +450,14 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     // This event indicates the device has started and the radio is ready.
     // Do not call any stack command before receiving this boot event!
         case sl_bt_evt_system_boot_id:
-            printf("[ADV] System boot - initializing\n");
+            DEBUG_PRINT("[ADV] System boot - initializing\n");
             // 總是建立 advertising set（無論誰控制）
             sc = sl_bt_advertiser_create_set(&advertising_set_handle);
             app_assert_status(sc);
             
             // 只有 adv_owner_flag == 0 時才啟動初始廣播
             if (adv_owner_flag != 0) {
-                printf("[ADV] Boot: Range test owns advertising, skipping initial start\n");
+                DEBUG_PRINT("[ADV] Boot: Range test owns advertising, skipping initial start\n");
                 break;
             }
 
@@ -467,11 +485,20 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     case sl_bt_evt_connection_opened_id:
       current_connection = evt->data.evt_connection_opened.connection;
       
+      // Enable BLE log output to connected device
+#if BLE_LOG_CHARACTERISTIC_HANDLE != 0
+      ble_log_set_connection(current_connection, BLE_LOG_CHARACTERISTIC_HANDLE);
+      BLE_PRINTF("[BLE] Connection established\n");
+#endif
       break;
 
     // -------------------------------
     // This event indicates that a connection was closed.
     case sl_bt_evt_connection_closed_id:
+      // Clear BLE log connection
+#if BLE_LOG_CHARACTERISTIC_HANDLE != 0
+      ble_log_clear_connection();
+#endif
       current_connection = 0xFF;
       
       // 只有 adv_owner_flag == 0 時才自動重啟廣播

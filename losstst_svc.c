@@ -7,6 +7,7 @@
  */
 
 #include "losstst_svc.h"
+#include "ble_log.h"
 #include <string.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -31,9 +32,17 @@
 #define CHK_UPDATE_ADV_PROCEDURE 1  /* Set to 1 to enable debug prints */
 
 #if CHK_UPDATE_ADV_PROCEDURE
-    #define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
+    /* Output to BLE if connected, otherwise to UART */
+    #define DEBUG_PRINT(fmt, ...) do { \
+        if (ble_log_is_connected()) { \
+            BLE_PRINTF(fmt, ##__VA_ARGS__); \
+        } else { \
+            printf(fmt, ##__VA_ARGS__); \
+        } \
+    } while(0)
 #else
-    #define DEBUG_PRINT(fmt, ...)
+    /* Always output to UART when debug is disabled */
+    #define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
 #endif
 
 /* ================== Advertising Options Presets ================== */
@@ -1419,7 +1428,7 @@ int passive_scan_control(int8_t method)
         );
         
         if (status != SL_STATUS_OK) {
-            printf("Scanning failed (err 0x%04X)\n", status);
+            DEBUG_PRINT("Scanning failed (err 0x%04X)\n", (unsigned int)status);
             return -EIO;
         }
         
@@ -1549,7 +1558,7 @@ int sender_setup(const test_param_t *param)
     numcast_abort_p = param->numcast_abort;
     
     /* Print task startup banner */
-    printf("Packet Loss Test (node %03u) **** SND SIDE ****\n", device_address[0]);
+    DEBUG_PRINT("Packet Loss Test (node %03u) **** SND SIDE ****\n", device_address[0]);
     
     /* Generate initial status message */
     sender_peek_msg();
@@ -1765,7 +1774,7 @@ int scanner_setup(const test_param_t *param)
     scanner_inactive = true;
     
     /* Print task startup banner */
-    printf("Packet Loss Test (node %03u) **** RCV SIDE ****\n", device_address[0]);
+    DEBUG_PRINT("Packet Loss Test (node %03u) **** RCV SIDE ****\n", device_address[0]);
     
     /* Generate initial status message */
     scanner_peek_msg();
@@ -1945,7 +1954,7 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
                    address.addr[5], address.addr[4], address.addr[3],
                    address.addr[2], address.addr[1], address.addr[0]);
     } else {
-        printf("Bluetooth init failed (err 0x%04X)\n", status);
+        DEBUG_PRINT("Bluetooth init failed (err 0x%04X)\n", (unsigned int)status);
         return -EIO;
     }
     
@@ -1955,7 +1964,7 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
     
     /* Validate advertising set configuration */
     if (num_adv_set < 5) {
-        printf("error CONFIG_BT_EXT_ADV_MAX_ADV_SET < 5\n");
+        DEBUG_PRINT("error CONFIG_BT_EXT_ADV_MAX_ADV_SET < 5\n");
         return -EINVAL;
     }
     
@@ -2091,20 +2100,20 @@ int losstst_init(void)
     /* 第一層：核心 BLE 初始化 */
     err = ble_test_init(true, true);
     if (err) {
-        printf("Core BLE init failed: %d\n", err);
+        DEBUG_PRINT("Core BLE init failed: %d\n", err);
         return err;
     }
-    printf("✓ Core BLE initialized\n");
+    DEBUG_PRINT("✓ Core BLE initialized\n");
     
     /* 第二層：應用層初始化 */
     err = my_app_init();
     if (err) {
-        printf("Application init failed: %d\n", err);
+        DEBUG_PRINT("Application init failed: %d\n", err);
         return err;
     }
-    printf("✓ Application layer initialized\n");
+    DEBUG_PRINT("✓ Application layer initialized\n");
     
-    printf("=== System Ready ===\n");
+    DEBUG_PRINT("=== System Ready ===\n");
     return 0;
 }
 
@@ -2507,7 +2516,7 @@ int losstst_sender(void)
         /* ========== Phase 4: Check for completion ========== */
         /* Check each PHY for completion */
         if (lc_phy_sel[0] && sub_total_snd_2m >= round_total_num) {
-            printf("SND:%u P:%s/%s Complete\n",
+            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
                        pri_phy_typ[1], sec_phy_typ[2]);
             
@@ -2516,7 +2525,7 @@ int losstst_sender(void)
         }
         
         if (lc_phy_sel[1] && sub_total_snd_1m >= round_total_num) {
-            printf("SND:%u P:%s/%s Complete\n",
+            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
                        pri_phy_typ[1], sec_phy_typ[1]);
             
@@ -2525,7 +2534,7 @@ int losstst_sender(void)
         }
         
         if (lc_phy_sel[2] && sub_total_snd_s8 >= round_total_num) {
-            printf("SND:%u P:%s/%s Complete\n",
+            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
                        pri_phy_typ[3], sec_phy_typ[3]);
             
@@ -2534,7 +2543,7 @@ int losstst_sender(void)
         }
         
         if (lc_phy_sel[3] && sub_total_snd_ble4 >= round_total_num) {
-            printf("SND:%u P:BLEv4 Complete\n",
+            DEBUG_PRINT("SND:%u P:BLEv4 Complete\n",
                        (uint8_t)device_address[0]);
             
             device_info_form[3].pre_cnt = INT16_MAX;
@@ -2694,7 +2703,7 @@ int losstst_scanner(void)
         if (0 == complete_mark) {
             complete_mark = platform_uptime_get();
         } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
-            printf("RCV_Task completed\n");
+            DEBUG_PRINT("RCV_Task completed\n");
             passive_scan_control(-1);
             return 0;
         }
