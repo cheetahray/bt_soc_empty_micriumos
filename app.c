@@ -142,9 +142,9 @@ static void load_parm_cfg(void)
 {
     /* These functions should be implemented based on your config system */
     /* Example placeholder values: */
-    round_test_parm.txpwr = 0;          // enum_txpower(0)
-    round_test_parm.count_idx = 0;      // enum_totalnum_idx(0)
-    round_test_parm.interval_idx = 0;   // enum_adv_interval_idx(0)
+    round_test_parm.txpwr = enum_txpower(0);          // enum_txpower(0)
+    round_test_parm.count_idx = enum_totalnum_idx(0);      // enum_totalnum_idx(0)
+    round_test_parm.interval_idx = enum_adv_interval_idx(0);   // enum_adv_interval_idx(0)
     
     /* Abort callbacks */
     round_test_parm.envmon_abort = tst_envmon_abort;
@@ -153,19 +153,19 @@ static void load_parm_cfg(void)
     round_test_parm.numcast_abort = tst_numcast_abort;
     
     /* PHY selection - default to all enabled */
-    round_test_parm.phy_2m = true;      // get_cfg_phy_sel(0)
-    round_test_parm.phy_1m = true;      // get_cfg_phy_sel(1)
-    round_test_parm.phy_s8 = true;      // get_cfg_phy_sel(2)
-    round_test_parm.phy_ble4 = true;    // get_cfg_phy_sel(3)
+    round_test_parm.phy_2m = get_cfg_phy_sel(0);      // get_cfg_phy_sel(0)
+    round_test_parm.phy_1m = get_cfg_phy_sel(1);      // get_cfg_phy_sel(1)
+    round_test_parm.phy_s8 = get_cfg_phy_sel(2);      // get_cfg_phy_sel(2)
+    round_test_parm.phy_ble4 = get_cfg_phy_sel(3);    // get_cfg_phy_sel(3)
     
     /* Channel selection - default all channels enabled */
-    round_test_parm.inhibit_ch37 = false;  // !get_cfg_ch37()
-    round_test_parm.inhibit_ch38 = false;  // !get_cfg_ch38()
-    round_test_parm.inhibit_ch39 = false;  // !get_cfg_ch39()
+    round_test_parm.inhibit_ch37 = !get_cfg_ch37();  // !get_cfg_ch37()
+    round_test_parm.inhibit_ch38 = !get_cfg_ch38();  // !get_cfg_ch38()
+    round_test_parm.inhibit_ch39 = !get_cfg_ch39();  // !get_cfg_ch39()
     
     /* Other settings */
-    round_test_parm.non_ANONYMOUS = false; // get_cfg_NON_ANONYMOUS()
-    round_test_parm.ignore_rcv_resp = false; // get_uni_cast_method()
+    round_test_parm.non_ANONYMOUS = get_cfg_NON_ANONYMOUS(); // get_cfg_NON_ANONYMOUS()
+    round_test_parm.ignore_rcv_resp = get_uni_cast_method(); // get_uni_cast_method()
 }
 
 void app_init(void)

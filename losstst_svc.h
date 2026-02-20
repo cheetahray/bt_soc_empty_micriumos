@@ -224,6 +224,80 @@ int8_t numcst_task_tgr(int8_t set);
  */
 int8_t envmon_task_tgr(int8_t set);
 
+/* ================== Configuration Enumeration Functions ================== */
+
+/**
+ * @brief Enumerate TX power values
+ * 
+ * @param dir Direction: 0=current, >0=next (higher power), <0=previous (lower power)
+ *            INT8_MAX=highest, INT8_MIN=lowest
+ * @return Current TX power value in dBm
+ */
+int8_t enum_txpower(int8_t dir);
+
+/**
+ * @brief Enumerate advertising interval index
+ * 
+ * @param dir Direction: 0=current, 1=next, -1=previous
+ *            INT8_MAX=max index, INT8_MIN=0
+ * @return Current interval index (0-based)
+ */
+uint8_t enum_adv_interval_idx(int8_t dir);
+
+/**
+ * @brief Enumerate total packet number index
+ * 
+ * @param dir Direction: 0=current, 1=next, -1=previous
+ *            INT8_MAX=max index, INT8_MIN=0
+ * @return Current count index (0-based)
+ */
+uint8_t enum_totalnum_idx(int8_t dir);
+
+/* ================== Configuration Getter Functions ================== */
+
+/**
+ * @brief Get PHY type selection status
+ * 
+ * @param idx PHY index: 0=2M, 1=1M, 2=Coded(S8), 3=BLE4.x
+ * @return true if selected, false otherwise
+ */
+bool get_cfg_phy_sel(uint8_t idx);
+
+/**
+ * @brief Get channel 37 enable status
+ * 
+ * @return true if channel 37 is enabled
+ */
+bool get_cfg_ch37(void);
+
+/**
+ * @brief Get channel 38 enable status
+ * 
+ * @return true if channel 38 is enabled
+ */
+bool get_cfg_ch38(void);
+
+/**
+ * @brief Get channel 39 enable status
+ * 
+ * @return true if channel 39 is enabled
+ */
+bool get_cfg_ch39(void);
+
+/**
+ * @brief Get non-anonymous advertising mode status
+ * 
+ * @return true if non-anonymous mode is enabled
+ */
+bool get_cfg_NON_ANONYMOUS(void);
+
+/**
+ * @brief Get unicast method status
+ * 
+ * @return true if unicast method is enabled
+ */
+bool get_uni_cast_method(void);
+
 /* ================== Utility Functions ================== */
 
 /**

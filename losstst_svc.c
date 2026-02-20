@@ -321,8 +321,22 @@ typedef struct __attribute__((__packed__)) {
 
 typedef uint8_t adv_handle_t;  /* Advertising handle (0-based index) */
 
+/* TX power set value pair (sv: set value, pv: actual power value) */
+typedef struct __attribute__((packed)) {
+	int8_t sv;
+	int8_t pv;
+} SV_PV_PWR_ST;
+
 static bool round_phy_sel[4]={true,false,false,false};
 static bool sndr_abort_flag[4]={false,false,false,false};
+static bool cfg_phy_sel[4]={true,false,false,false};
+static bool cfg_inhibit_ch37, cfg_inhibit_ch38, cfg_inhibit_ch39;
+static bool cfg_non_ANONYMOUS;
+static int8_t cfg_interval_sel_idx;
+static int8_t cfg_totalnum_sel_idx;
+static bool uni_cast_method;
+static SV_PV_PWR_ST txpwr_setval[2][20];
+static uint8_t txpwr_idx = 20;  /* Initialize to array size to trigger init on first use */
 static const adv_param_t *non_connectable_adv_param_x[][4] ={
 	{	// group 0
 		//IDX_0, IDX_1, IDX_2, IDX_3
@@ -2047,6 +2061,144 @@ int8_t sender_task_tgr(int8_t set) { return losstst_task_tgr( set, sender_tgr  )
 int8_t sender_task_status(void) { return losstst_task_status( sender_tgr ); }
 int8_t envmon_task_tgr(int8_t set) { return losstst_task_tgr( set, envmon_tgr  ); }
 int8_t envmon_task_status(void) { return losstst_task_status( envmon_tgr ); }
+
+/* ===============================================
+ * Configuration Enumeration and Getter Functions
+ * =============================================== */
+
+static int enum_txpwr_pv_sort(const SV_PV_PWR_ST * parma, const SV_PV_PWR_ST * parmb)
+{
+	return (parmb->pv - parma->pv);
+}
+
+static int enum_txpwr_sv_sort(const SV_PV_PWR_ST * parma, const SV_PV_PWR_ST * parmb)
+{
+	return (parmb->sv - parma->sv);
+}
+
+static void init_txpwr_setval(void)
+{
+	txpwr_idx = 0;
+	uint8_t idx = 0;
+	memset(txpwr_setval, INT8_MIN, sizeof(txpwr_setval));
+	
+	/* Platform-specific TX power initialization */
+	/* Silicon Labs: Enumerate available TX power levels */
+	int8_t test_powers[] = {-40, -20, -16, -12, -8, -4, 0, 2, 3, 4, 5, 6, 7, 8};
+	
+	for (int i = 0; i < sizeof(test_powers); i++) {
+		int16_t set_min, set_max;
+		// Convert dBm to 0.1 dBm units (multiply by 10)
+		sl_status_t sc = sl_bt_system_set_tx_power(test_powers[i] * 10, test_powers[i] * 10, &set_min, &set_max);
+		if (sc == SL_STATUS_OK) {
+			if (idx == 0 || txpwr_setval[0][idx - 1].pv != (int8_t)(set_max / 10)) {
+				txpwr_setval[0][idx].sv = test_powers[i];
+				txpwr_setval[0][idx].pv = (int8_t)(set_max / 10);
+				idx++;
+				if (idx >= 20) break;
+			}
+		}
+	}
+	/* Restore default power */
+	sl_bt_system_set_tx_power(0, 0, NULL, NULL);
+	
+	/* Sort by PV (descending) for Nordic compatibility */
+	qsort(txpwr_setval[0], idx, sizeof(SV_PV_PWR_ST), 
+	      (int (*)(const void *, const void *))enum_txpwr_pv_sort);
+	
+	/* Copy to second array and sort by SV */
+	memcpy(txpwr_setval[1], txpwr_setval[0], sizeof(txpwr_setval[0]));
+	qsort(txpwr_setval[1], idx, sizeof(SV_PV_PWR_ST),
+	      (int (*)(const void *, const void *))enum_txpwr_sv_sort);
+}
+
+int8_t enum_txpower(int8_t dir)
+{
+	if (txpwr_idx >= 20) init_txpwr_setval();  /* ARRAY_SIZE(txpwr_setval[0]) */
+
+	if (0 < dir) {
+		if (INT8_MAX == dir) {
+			txpwr_idx = 0;
+		} else if (0 > ((int8_t)(txpwr_idx = txpwr_idx - 1))) {
+			uint8_t idx = 0;
+			while (txpwr_setval[0][idx].pv != INT8_MIN) idx++;
+			txpwr_idx = idx - 1;
+		}
+	} else if (0 > dir) {
+		if (INT8_MIN == dir) {
+			uint8_t idx = 0;
+			while (txpwr_setval[0][idx].pv != INT8_MIN) idx++;
+			txpwr_idx = idx - 1;
+		} else if (INT8_MIN == txpwr_setval[0][++txpwr_idx].pv) {
+			txpwr_idx = 0;
+		}
+	}
+	
+	return txpwr_setval[0][txpwr_idx].pv;
+}
+
+uint8_t enum_adv_interval_idx(int8_t dir) /* index func(1:next / -1:previous / 0:current) */
+{
+	if (0 < dir) cfg_interval_sel_idx++;
+	else if (0 > dir) cfg_interval_sel_idx--;
+
+	if (cfg_interval_sel_idx >= (int8_t)(sizeof(value_interval) / sizeof(value_interval[0])))
+		cfg_interval_sel_idx = (INT8_MAX == dir) ? ((sizeof(value_interval) / sizeof(value_interval[0])) - 1) : 0;
+	else if (0 > cfg_interval_sel_idx)
+		cfg_interval_sel_idx = (INT8_MIN == dir) ? 0 : ((sizeof(value_interval) / sizeof(value_interval[0])) - 1);
+	
+	return cfg_interval_sel_idx;
+}
+
+bool get_uni_cast_method(void)
+{
+	return (uni_cast_method) ? 1 : 0;
+}
+
+uint8_t enum_totalnum_idx(int8_t dir)
+{
+	if (0 < dir) cfg_totalnum_sel_idx++;
+	else if (0 > dir) cfg_totalnum_sel_idx--;
+
+	if (cfg_totalnum_sel_idx >= (int8_t)(sizeof(enum_total_num) / sizeof(enum_total_num[0])))
+		cfg_totalnum_sel_idx = (INT8_MAX == dir) ? ((sizeof(enum_total_num) / sizeof(enum_total_num[0])) - 1) : 0;
+	else if (0 > cfg_totalnum_sel_idx)
+		cfg_totalnum_sel_idx = (INT8_MIN == dir) ? 0 : ((sizeof(enum_total_num) / sizeof(enum_total_num[0])) - 1);
+	
+	return cfg_totalnum_sel_idx;
+}
+
+static void chk_cfg_phy_sel(void)
+{
+	if (!cfg_phy_sel[0] && !cfg_phy_sel[1] && !cfg_phy_sel[2]) cfg_phy_sel[0] = true;
+}
+
+bool get_cfg_phy_sel(uint8_t idx)
+{
+	chk_cfg_phy_sel();
+	if (3 != idx && cfg_phy_sel[3]) return false;
+	return (cfg_phy_sel[idx]) ? 1 : 0;
+}
+
+bool get_cfg_ch37(void)
+{
+	return (!cfg_inhibit_ch37) ? 1 : 0;
+}
+
+bool get_cfg_ch38(void)
+{
+	return (!cfg_inhibit_ch38) ? 1 : 0;
+}
+
+bool get_cfg_ch39(void)
+{
+	return (!cfg_inhibit_ch39) ? 1 : 0;
+}
+
+bool get_cfg_NON_ANONYMOUS(void)
+{
+	return (cfg_non_ANONYMOUS || cfg_phy_sel[3]) ? 1 : 0;
+}
 
 /* ===============================================
  * 雙層初始化範例
