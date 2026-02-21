@@ -55,61 +55,6 @@ static osEventFlagsId_t button_event_flags = NULL;
 #define BTN0_PRESSED_FLAG  (1U << 0)  // Button 0 pressed event
 #define BTN1_PRESSED_FLAG  (1U << 1)  // Button 1 pressed event
 
-/* ==================== Advertising Set Management ==================== */
-// Bitmask to track which advertising sets are in use (for monitoring/debugging)
-// Bit 0-4: Range test (losstst_svc uses sets 0-4)
-// Bit 5: Connection advertising (sl_bt_on_event)
-// 
-// NOTE: This is for TRACKING ONLY. We do NOT stop connection advertising
-//       during range tests - Silicon Labs BLE stack supports multiple
-//       concurrent advertising sets. This allows BLE log access during tests.
-static volatile uint8_t adv_set_usage_mask = 0;
-
-// Bit definitions for advertising sets
-#define ADV_SET_0  (1U << 0)  // Range test - 2M PHY
-#define ADV_SET_1  (1U << 1)  // Range test - 1M PHY  
-#define ADV_SET_2  (1U << 2)  // Range test - S8 PHY
-#define ADV_SET_3  (1U << 3)  // Range test - BLE4
-#define ADV_SET_4  (1U << 4)  // Range test - Extended/NumCast
-#define ADV_SET_5  (1U << 5)  // Connection advertising
-
-// Composite masks
-#define ADV_RANGE_TEST_MASK  (ADV_SET_0 | ADV_SET_1 | ADV_SET_2 | ADV_SET_3 | ADV_SET_4)
-#define ADV_CONNECTION_MASK  (ADV_SET_5)
-
-/**
- * @brief Mark advertising set(s) as in use (for tracking)
- * @param mask Bitmask of sets to mark as in use
- * @return true if all requested sets were free and marked, false if any were already marked
- * @note This is for monitoring only - does not actually control the BLE stack
- */
-static inline bool adv_set_acquire(uint8_t mask) {
-    if ((adv_set_usage_mask & mask) == 0) {
-        adv_set_usage_mask |= mask;
-        return true;
-    }
-    return false;
-}
-
-/**
- * @brief Mark advertising set(s) as free (for tracking)
- * @param mask Bitmask of sets to mark as free
- * @note This is for monitoring only - does not actually control the BLE stack
- */
-static inline void adv_set_release(uint8_t mask) {
-    adv_set_usage_mask &= ~mask;
-}
-
-/**
- * @brief Check if advertising set(s) are marked as in use
- * @param mask Bitmask of sets to check
- * @return true if any of the specified sets are marked as in use
- * @note This is for monitoring only - reflects tracking state, not actual BLE stack state
- */
-static inline bool adv_set_is_used(uint8_t mask) {
-    return (adv_set_usage_mask & mask) != 0;
-}
-
 // BLE Log characteristic handle
 // Log Output characteristic value handle (0x1b = 27) from gatt_db.c
 #define BLE_LOG_CHARACTERISTIC_HANDLE  27  
@@ -355,14 +300,10 @@ void app_process_action(void)
         
         /* ========== Task Setup Phase ========== */
         if (task_SCANNER || task_SENDER || task_NUMCAST || task_ENVMON) {
-            // 标记 range test 广播集正在使用 (sets 0-4)
-            // 注意：不停止 connection advertising，让它们共存
+            // Range test 使用 advertising sets 0-4
+            // Connection advertising (set 5) 继续运行，允许 BLE log 访问
             // Silicon Labs BLE stack 支持多个 advertising sets 同时运行
-            if (!adv_set_is_used(ADV_RANGE_TEST_MASK)) {
-                DEBUG_PRINT("[ADV] Range test starting, using advertising sets 0-4\n");
-                DEBUG_PRINT("[ADV] Connection advertising (set 5) continues for BLE log access\n");
-                adv_set_acquire(ADV_RANGE_TEST_MASK);
-            }
+            DEBUG_PRINT("[ADV] Range test starting with sets 0-4 (connection set 5 remains active)\n");
         }
         if (task_SCANNER) {
             blocking_adv(0);
@@ -411,11 +352,7 @@ void app_process_action(void)
             task_SCANNER = false;
             task_SENDER = false;
             task_NUMCAST = false;
-            // Range test 被中断，释放追踪位
-            if (adv_set_is_used(ADV_RANGE_TEST_MASK)) {
-                DEBUG_PRINT("[ADV] Range test interrupted during setup, releasing tracking\n");
-                adv_set_release(ADV_RANGE_TEST_MASK);
-            }
+            DEBUG_PRINT("[ADV] Range test interrupted during setup\n");
             return;
         }
         
@@ -447,11 +384,7 @@ void app_process_action(void)
             task_SCANNER = false;
             task_SENDER = false;
             task_NUMCAST = false;
-            // Range test 被中断，释放追踪位
-            if (adv_set_is_used(ADV_RANGE_TEST_MASK)) {
-                DEBUG_PRINT("[ADV] Range test interrupted, releasing tracking\n");
-                adv_set_release(ADV_RANGE_TEST_MASK);
-            }
+            DEBUG_PRINT("[ADV] Range test interrupted\n");
             return;
         }
     }
@@ -485,12 +418,8 @@ void app_process_action(void)
             numcst_task_tgr(-numcst_task_tgr(0));
         }
     }
-    // 若所有 range test 任务都结束，释放追踪位
-    if (!task_ENVMON && !task_SCANNER && !task_SENDER && !task_NUMCAST && adv_set_is_used(ADV_RANGE_TEST_MASK)) {
-        DEBUG_PRINT("[ADV] Range test completed, releasing tracking for sets 0-4\n");
-        adv_set_release(ADV_RANGE_TEST_MASK);
-        DEBUG_PRINT("[ADV] Connection advertising (set 5) remains active for BLE log\n");
-    }
+    // 若所有 range test 任务都结束
+    // Connection advertising (set 5) 继续运行，无需额外操作
   }
 }
 
@@ -510,16 +439,10 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     // Do not call any stack command before receiving this boot event!
         case sl_bt_evt_system_boot_id:
             DEBUG_PRINT("[ADV] System boot - initializing\n");
-            // 建立手機連接用的 advertising set (第 6 個 set)
-            // losstst_svc 已經使用 0-4 (共 5 個)
+            // 建立手机连接用的 advertising set (set 5)
+            // losstst_svc 使用 sets 0-4 for range test
             sc = sl_bt_advertiser_create_set(&advertising_set_handle);
             app_assert_status(sc);
-            
-            // 檢查 range test 是否占用廣播集（通常不會，除非異常重啟）
-            if (adv_set_is_used(ADV_RANGE_TEST_MASK)) {
-                DEBUG_PRINT("[ADV] Boot: Range test sets in use, skipping initial start\n");
-                break;
-            }
 
             // Generate data for advertising
             sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
@@ -538,10 +461,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
             sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
                                                                                  sl_bt_legacy_advertiser_connectable);
             app_assert_status(sc);
-            
-            // 標記 connection advertising set 已使用
-            adv_set_acquire(ADV_CONNECTION_MASK);
-            DEBUG_PRINT("[ADV] Connection advertising (set 5) started\n");
+            DEBUG_PRINT("[ADV] Connection advertising started\n");
             break;
 
     // -------------------------------
@@ -565,19 +485,16 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 #endif
       current_connection = 0xFF;
       
-      // 总是重启 connection advertising，即使在 range test 期间
-      // 这样可以在测试时重新连接查看 BLE log
-      // Generate data for advertising
+      // 重启 connection advertising（range test 期间也可重连查看 BLE log）
       sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
                                                  sl_bt_advertiser_general_discoverable);
       app_assert_status(sc);
 
-      // Restart advertising after client has disconnected.
       sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
                                          sl_bt_legacy_advertiser_connectable);
       app_assert_status(sc);
       
-      DEBUG_PRINT("[ADV] Connection advertising (set 5) restarted\n");
+      DEBUG_PRINT("[ADV] Connection advertising restarted\n");
       break;
 
     ///////////////////////////////////////////////////////////////////////////
