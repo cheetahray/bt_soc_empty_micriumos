@@ -1328,30 +1328,34 @@ int set_adv_tx_power(int8_t tx_power_dbm, uint8_t num_handles)
     
     int err = 0;
     
-    /* Silicon Labs implementation using system API */
-    /* Example implementation: */
+    /* Silicon Labs implementation: Set TX power for each advertising set */
     sl_status_t status;
-    int16_t set_min, set_max;
+    int16_t set_tx_power;
     
     // Convert dBm to 0.1dBm units for Silicon Labs
-    set_min = tx_power_dbm * 10;
-    set_max = tx_power_dbm * 10;
+    set_tx_power = tx_power_dbm * 10;
     
-    // Set TX power for advertising
-    status = sl_bt_system_set_tx_power(
-        set_min,
-        set_max,
-        &set_min,  // Returns actual min set
-        &set_max   // Returns actual max set
-    );
-    
-    if (status != SL_STATUS_OK) {
-        return -EIO;
+    // Set TX power for each advertising handle used by range test
+    for (uint8_t i = 0; i < num_handles && i < MAX_ADV_SETS; i++) {
+        if (ext_adv[i] != 0xFF) {  // Only set if handle is valid
+            status = sl_bt_advertiser_set_tx_power(
+                ext_adv[i],
+                set_tx_power,
+                &set_tx_power  // Returns actual power set
+            );
+            
+            if (status != SL_STATUS_OK) {
+                DEBUG_PRINT("Failed to set TX power for adv set %d: 0x%04X\n", i, status);
+                err = -EIO;
+                // Continue to try setting other handles
+            }
+        }
     }
     
-    DEBUG_PRINT("TX Power set: requested=%d.%ddBm, actual=%d.%ddBm\n",
-               tx_power_dbm, 0, set_max / 10, set_max % 10);
-    
+    if (err == 0) {
+        DEBUG_PRINT("TX Power set: requested=%d.%ddBm, actual=%d.%ddBm for %d sets\n",
+                   tx_power_dbm, 0, set_tx_power / 10, abs(set_tx_power % 10), num_handles);
+    }
     
     return err;
 }
@@ -1796,7 +1800,7 @@ int scanner_setup(const test_param_t *param)
     /* Set TX power for potential response advertising */
     err = set_adv_tx_power(param->txpwr, 4);
     if (err) {
-        DEBUG_PRINT("scanner_setup: TX power set failed: %d\n", err);
+        DEBUG_PRINT("scanner_setup: TX power set failed: %d with txpwr %d\n", err, param->txpwr);
         return err;
     }
     
@@ -2083,24 +2087,40 @@ static void init_txpwr_setval(void)
 	memset(txpwr_setval, INT8_MIN, sizeof(txpwr_setval));
 	
 	/* Platform-specific TX power initialization */
-	/* Silicon Labs: Enumerate available TX power levels */
-	int8_t test_powers[] = {-40, -20, -16, -12, -8, -4, 0, 2, 3, 4, 5, 6, 7, 8};
+	/* Silicon Labs EFR32MG27: Use known available TX power levels */
+	/* Typical range: -40 to +10 dBm (device dependent) */
+	/* Using common values that are widely supported */
 	
-	for (int i = 0; i < sizeof(test_powers); i++) {
-		int16_t set_min, set_max;
-		// Convert dBm to 0.1 dBm units (multiply by 10)
-		sl_status_t sc = sl_bt_system_set_tx_power(test_powers[i] * 10, test_powers[i] * 10, &set_min, &set_max);
-		if (sc == SL_STATUS_OK) {
-			if (idx == 0 || txpwr_setval[0][idx - 1].pv != (int8_t)(set_max / 10)) {
-				txpwr_setval[0][idx].sv = test_powers[i];
-				txpwr_setval[0][idx].pv = (int8_t)(set_max / 10);
-				idx++;
-				if (idx >= 20) break;
-			}
-		}
+	// Known supported power levels for EFR32MG27
+	struct {
+		int8_t sv;  // Set value (requested power)
+		int8_t pv;  // Actual power (what hardware provides)
+	} known_powers[] = {
+		{-40, -40},
+		{-20, -20},
+		{-16, -16},
+		{-12, -12},
+		{-8, -8},
+		{-4, -4},
+		{0, 0},
+		{2, 2},
+		{3, 3},
+		{4, 4},
+		{5, 5},
+		{6, 6},
+		{7, 7},
+		{8, 8},
+		{10, 10}  // Maximum typical power
+	};
+	
+	// Copy known power levels to the array
+	for (int i = 0; i < sizeof(known_powers) / sizeof(known_powers[0]) && idx < 20; i++) {
+		txpwr_setval[0][idx].sv = known_powers[i].sv;
+		txpwr_setval[0][idx].pv = known_powers[i].pv;
+		idx++;
 	}
-	/* Restore default power */
-	sl_bt_system_set_tx_power(0, 0, NULL, NULL);
+	
+	DEBUG_PRINT("TX Power levels initialized: %d levels available\n", idx);
 	
 	/* Sort by PV (descending) for Nordic compatibility */
 	qsort(txpwr_setval[0], idx, sizeof(SV_PV_PWR_ST), 
@@ -2347,7 +2367,7 @@ void blocking_adv(uint8_t index)
     /* Stop advertising immediately */
     int err = platform_stop_adv(ext_adv[index]);
     
-    DEBUG_PRINT("blocking_adv(%u): %s\n", index, err ? "failed" : "stopped");
+    //DEBUG_PRINT("blocking_adv(%u): %s\n", index, err ? "failed" : "stopped");
     
     /* Mark as stopped and clear start flag */
     ext_adv_status[index].stop = 1;

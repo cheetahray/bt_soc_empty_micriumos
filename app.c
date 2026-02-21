@@ -145,7 +145,7 @@ static void load_parm_cfg(void)
 {
     /* These functions should be implemented based on your config system */
     /* Example placeholder values: */
-    round_test_parm.txpwr = enum_txpower(0);          // enum_txpower(0)
+    round_test_parm.txpwr = 0;  // Default: 0 dBm (safe and moderate power)
     round_test_parm.count_idx = enum_totalnum_idx(0);      // enum_totalnum_idx(0)
     round_test_parm.interval_idx = enum_adv_interval_idx(0);   // enum_adv_interval_idx(0)
     
@@ -264,7 +264,7 @@ void app_process_action(void)
             task_SENDER = true;
             task_SCANNER = false;
             task_NUMCAST = false;
-            load_parm_cfg();
+            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
             task_delay = false;
         }
         else if (scanner_task_tgr(0)) {
@@ -272,7 +272,7 @@ void app_process_action(void)
             task_SENDER = false;
             task_SCANNER = true;
             task_NUMCAST = false;
-            load_parm_cfg();
+            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
             task_delay = false;
         }
         else if (numcst_task_tgr(0)) {
@@ -280,7 +280,7 @@ void app_process_action(void)
             task_SENDER = false;
             task_SCANNER = false;
             task_NUMCAST = true;
-            load_parm_cfg();
+            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
             task_delay = false;
         }
         else if (envmon_task_tgr(0)) {
@@ -288,7 +288,7 @@ void app_process_action(void)
             task_SENDER = false;
             task_SCANNER = false;
             task_NUMCAST = false;
-            load_parm_cfg();
+            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
             task_delay = false;
         }
         else {

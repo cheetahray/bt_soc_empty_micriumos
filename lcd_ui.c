@@ -270,25 +270,23 @@ static uint8_t get_count_count(void)
 }
 
 /**
- * @brief Convert TX power index to human-readable string
+ * @brief Convert TX power value to human-readable string
  * 
- * @param txpwr_idx TX power index from test_param_t
+ * @param txpwr Actual TX power in dBm from test_param_t
  * @return String representation (e.g., "+10dBm")
  * 
- * @note Adjust mapping based on your hardware capabilities
+ * @note This function receives actual dBm values, not indices
  */
-static const char* get_txpwr_string(int8_t txpwr_idx)
+static const char* get_txpwr_string(int8_t txpwr)
 {
-    // EFR32MG27 typical TX power levels
-    switch(txpwr_idx) {
-        case -3: return "-20dBm";
-        case -2: return "-10dBm";
-        case -1: return "-5dBm";
-        case 0:  return "0dBm";
-        case 1:  return "+5dBm";
-        case 2:  return "+10dBm";
-        default: return "?dBm";
+    // Format actual dBm value as string
+    static char buf[8];
+    if (txpwr > 0) {
+        snprintf(buf, sizeof(buf), "+%ddBm", txpwr);
+    } else {
+        snprintf(buf, sizeof(buf), "%ddBm", txpwr);
     }
+    return buf;
 }
 
 /**
