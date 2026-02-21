@@ -44,6 +44,7 @@ static bool lcd_initialized = false;
 static uint8_t current_selection = 0;  // Current selected item (0-based)
 static uint8_t max_selection_items = 9;  // Total number of selectable items
 static test_param_t *cached_param = NULL;  // Cache for redraw (non-const for editing)
+static uint8_t scroll_offset = 0;  // Menu scroll offset (items scrolled up)
 
 /* Sub-menu state */
 typedef enum {
@@ -54,6 +55,7 @@ typedef enum {
 static lcd_menu_mode_t menu_mode = LCD_MODE_MAIN_MENU;
 static uint8_t sub_selection = 0;       // Current selection in sub-menu
 static uint8_t max_sub_items = 0;       // Number of items in current sub-menu
+static uint8_t sub_scroll_offset = 0;   // Sub-menu scroll offset
 
 /* Item names for display */
 static const char* item_names[] = {
@@ -389,59 +391,86 @@ void lcd_ui_show_startup(void *param_ptr)
     if (param != NULL) {
         uint8_t text_x = 10;  // Text starts at x=10 (leave space for triangle)
         
-        // Line 0: TX Power
-        if (current_selection == 0) draw_selection_triangle(2, 27);
-        snprintf(buf, sizeof(buf), "TxPwr:%s", get_txpwr_string(param->txpwr));
-        draw_text(text_x, 25, buf);
+        // Calculate scroll: show items [scroll_offset .. scroll_offset+8]
+        // Maximum 9 visible items at a time
+        const uint8_t MAX_VISIBLE_ITEMS = 9;
+        const uint8_t BASE_Y = 25;  // Starting Y position for first visible item
+        const uint8_t LINE_HEIGHT = 10;  // Spacing between items
         
-        // Line 1: Interval
-        if (current_selection == 1) draw_selection_triangle(2, 37);
-        snprintf(buf, sizeof(buf), "Intv:%s", get_interval_string(param->interval_idx));
-        draw_text(text_x, 35, buf);
-        
-        // Line 2: Count
-        if (current_selection == 2) draw_selection_triangle(2, 47);
-        snprintf(buf, sizeof(buf), "Count:%s", get_count_string(param->count_idx));
-        draw_text(text_x, 45, buf);
-        
-        // Line 3: PHY Selection
-        if (current_selection == 3) draw_selection_triangle(2, 57);
-        snprintf(buf, sizeof(buf), "PHY:%s%s%s%s",
-                 param->phy_2m ? "2M " : "",
-                 param->phy_1m ? "1M " : "",
-                 param->phy_s8 ? "S8 " : "",
-                 param->phy_ble4 ? "BLE4" : "");
-        draw_text(text_x, 55, buf);
-        
-        // Line 4: Channel Status
-        if (current_selection == 4) draw_selection_triangle(2, 67);
-        if (param->inhibit_ch37 || param->inhibit_ch38 || param->inhibit_ch39) {
-            snprintf(buf, sizeof(buf), "CH:%s%s%s",
-                     param->inhibit_ch37 ? "X37 " : "O37 ",
-                     param->inhibit_ch38 ? "X38 " : "O38 ",
-                     param->inhibit_ch39 ? "X39" : "O39");
-        } else {
-            snprintf(buf, sizeof(buf), "CH:All Enabled");
+        // Draw only visible items
+        for (uint8_t i = 0; i < max_selection_items; i++) {
+            // Check if item is in visible range
+            if (i < scroll_offset || i >= scroll_offset + MAX_VISIBLE_ITEMS) {
+                continue;  // Skip items outside visible area
+            }
+            
+            // Calculate Y position relative to visible area
+            uint8_t visible_index = i - scroll_offset;
+            uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+            uint8_t triangle_y = y + 2;
+            
+            // Draw selection triangle if this is the current item
+            if (current_selection == i) {
+                draw_selection_triangle(2, triangle_y);
+            }
+            
+            // Draw menu item based on index
+            switch (i) {
+                case 0: // TX Power
+                    snprintf(buf, sizeof(buf), "TxPwr:%s", get_txpwr_string(param->txpwr));
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 1: // Interval
+                    snprintf(buf, sizeof(buf), "Intv:%s", get_interval_string(param->interval_idx));
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 2: // Count
+                    snprintf(buf, sizeof(buf), "Count:%s", get_count_string(param->count_idx));
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 3: // PHY Selection
+                    snprintf(buf, sizeof(buf), "PHY:%s%s%s%s",
+                             param->phy_2m ? "2M " : "",
+                             param->phy_1m ? "1M " : "",
+                             param->phy_s8 ? "S8 " : "",
+                             param->phy_ble4 ? "BLE4" : "");
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 4: // Channel Status
+                    if (param->inhibit_ch37 || param->inhibit_ch38 || param->inhibit_ch39) {
+                        snprintf(buf, sizeof(buf), "CH:%s%s%s",
+                                 param->inhibit_ch37 ? "X37 " : "O37 ",
+                                 param->inhibit_ch38 ? "X38 " : "O38 ",
+                                 param->inhibit_ch39 ? "X39" : "O39");
+                    } else {
+                        snprintf(buf, sizeof(buf), "CH:All Enabled");
+                    }
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 5: // NonAnonymous
+                    snprintf(buf, sizeof(buf), "NonAnon:%s", param->non_ANONYMOUS ? "YES" : "NO");
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 6: // Ignore Response
+                    snprintf(buf, sizeof(buf), "IgnResp:%s", param->ignore_rcv_resp ? "YES" : "NO");
+                    draw_text(text_x, y, buf);
+                    break;
+                    
+                case 7: // Start Task
+                    draw_text(text_x, y, "StartTask:Select");
+                    break;
+                    
+                case 8: // Stop Task
+                    draw_text(text_x, y, "StopTask:Stop All");
+                    break;
+            }
         }
-        draw_text(text_x, 65, buf);
-        
-        // Line 5: NonAnonymous
-        if (current_selection == 5) draw_selection_triangle(2, 77);
-        snprintf(buf, sizeof(buf), "NonAnon:%s", param->non_ANONYMOUS ? "YES" : "NO");
-        draw_text(text_x, 75, buf);
-        
-        // Line 6: Ignore Response
-        if (current_selection == 6) draw_selection_triangle(2, 87);
-        snprintf(buf, sizeof(buf), "IgnResp:%s", param->ignore_rcv_resp ? "YES" : "NO");
-        draw_text(text_x, 85, buf);
-        
-        // Line 7: Start Task
-        if (current_selection == 7) draw_selection_triangle(2, 97);
-        draw_text(text_x, 95, "StartTask:Select");
-        
-        // Line 8: Stop Task
-        if (current_selection == 8) draw_selection_triangle(2, 107);
-        draw_text(text_x, 105, "StopTask:Stop All");
         
         // Bottom status
         draw_text(2, 115, "BTN0:Next");
@@ -674,7 +703,9 @@ static void draw_sub_menu(void)
     // Horizontal separator
     GLIB_drawLineH(&glibContext, 0, 127, 12);
     
-    uint8_t y = 18;
+    const uint8_t BASE_Y = 18;
+    const uint8_t LINE_HEIGHT = 10;
+    const uint8_t MAX_VISIBLE_ITEMS = 10;  // Max items visible in sub-menu
     uint8_t text_x = 10;
     
     switch (current_selection) {
@@ -682,19 +713,25 @@ static void draw_sub_menu(void)
         {
             uint8_t pwr_count = get_txpwr_count();
             max_sub_items = pwr_count + 1;  // All power options + Back
-            for (uint8_t i = 0; i < pwr_count; i++) {
+            
+            // Draw visible items with scroll support
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                // Check if item is in visible range
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
                 if (sub_selection == i) draw_selection_triangle(2, y+2);
-                draw_text(text_x, y, get_txpwr_string_by_idx(i));
-                y += 10;
-                // Scroll if needed (only show up to 10 items on screen)
-                if (i >= 9 && i < pwr_count - 1) {
-                    draw_text(text_x, y, "...");
-                    y += 10;
-                    break;
+                
+                if (i < pwr_count) {
+                    draw_text(text_x, y, get_txpwr_string_by_idx(i));
+                } else {
+                    draw_text(text_x, y, "< Back");
                 }
             }
-            if (sub_selection == pwr_count) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
             break;
         }
             
@@ -702,19 +739,25 @@ static void draw_sub_menu(void)
         {
             uint8_t int_count = get_interval_count();
             max_sub_items = int_count + 1;  // 11 intervals + Back
-            for (uint8_t i = 0; i < int_count; i++) {
+            
+            // Draw visible items with scroll support
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                // Check if item is in visible range
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
                 if (sub_selection == i) draw_selection_triangle(2, y+2);
-                draw_text(text_x, y, get_interval_string_by_idx(i));
-                y += 10;
-                // Scroll if needed (only show up to 10 items on screen)
-                if (i >= 9 && i < int_count - 1) {
-                    draw_text(text_x, y, "...");
-                    y += 10;
-                    break;
+                
+                if (i < int_count) {
+                    draw_text(text_x, y, get_interval_string_by_idx(i));
+                } else {
+                    draw_text(text_x, y, "< Back");
                 }
             }
-            if (sub_selection == int_count) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
             break;
         }
             
@@ -722,90 +765,132 @@ static void draw_sub_menu(void)
         {
             uint8_t cnt_count = get_count_count();
             max_sub_items = cnt_count + 1;  // 7 counts + Back
-            for (uint8_t i = 0; i < cnt_count; i++) {
+            
+            // Draw visible items with scroll support (though 8 items fit without scroll)
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
                 if (sub_selection == i) draw_selection_triangle(2, y+2);
-                draw_text(text_x, y, get_count_string_by_idx(i));
-                y += 10;
+                
+                if (i < cnt_count) {
+                    draw_text(text_x, y, get_count_string_by_idx(i));
+                } else {
+                    draw_text(text_x, y, "< Back");
+                }
             }
-            if (sub_selection == cnt_count) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
             break;
         }
             
         case 3: // PHY
+        {
             max_sub_items = 5;  // 4 options + Back
-            if (sub_selection == 0) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->phy_2m ? "[X] 2M PHY" : "[ ] 2M PHY");
-            y += 10;
-            if (sub_selection == 1) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->phy_1m ? "[X] 1M PHY" : "[ ] 1M PHY");
-            y += 10;
-            if (sub_selection == 2) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->phy_s8 ? "[X] S8 PHY" : "[ ] S8 PHY");
-            y += 10;
-            if (sub_selection == 3) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->phy_ble4 ? "[X] BLE4" : "[ ] BLE4");
-            y += 10;
-            if (sub_selection == 4) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
+            const char* phy_items[] = {
+                cached_param->phy_2m ? "[X] 2M PHY" : "[ ] 2M PHY",
+                cached_param->phy_1m ? "[X] 1M PHY" : "[ ] 1M PHY",
+                cached_param->phy_s8 ? "[X] S8 PHY" : "[ ] S8 PHY",
+                cached_param->phy_ble4 ? "[X] BLE4" : "[ ] BLE4",
+                "< Back"
+            };
+            
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, phy_items[i]);
+            }
             break;
+        }
             
         case 4: // Channel
+        {
             max_sub_items = 4;  // 3 channels + Back
-            if (sub_selection == 0) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->inhibit_ch37 ? "[X] Ch37 OFF" : "[ ] Ch37 ON");
-            y += 10;
-            if (sub_selection == 1) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->inhibit_ch38 ? "[X] Ch38 OFF" : "[ ] Ch38 ON");
-            y += 10;
-            if (sub_selection == 2) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, cached_param->inhibit_ch39 ? "[X] Ch39 OFF" : "[ ] Ch39 ON");
-            y += 10;
-            if (sub_selection == 3) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
+            const char* ch_items[] = {
+                cached_param->inhibit_ch37 ? "[X] Ch37 OFF" : "[ ] Ch37 ON",
+                cached_param->inhibit_ch38 ? "[X] Ch38 OFF" : "[ ] Ch38 ON",
+                cached_param->inhibit_ch39 ? "[X] Ch39 OFF" : "[ ] Ch39 ON",
+                "< Back"
+            };
+            
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, ch_items[i]);
+            }
             break;
+        }
             
         case 5: // NonAnonymous
+        {
             max_sub_items = 3;  // ON, OFF, Back
-            if (sub_selection == 0) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "ON");
-            y += 10;
-            if (sub_selection == 1) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "OFF");
-            y += 10;
-            if (sub_selection == 2) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
+            const char* items[] = {"ON", "OFF", "< Back"};
+            
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, items[i]);
+            }
             break;
+        }
             
         case 6: // IgnoreResponse
+        {
             max_sub_items = 3;  // ON, OFF, Back
-            if (sub_selection == 0) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "ON");
-            y += 10;
-            if (sub_selection == 1) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "OFF");
-            y += 10;
-            if (sub_selection == 2) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
+            const char* items[] = {"ON", "OFF", "< Back"};
+            
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, items[i]);
+            }
             break;
+        }
             
         case 7: // Start Task
+        {
             max_sub_items = 5;  // 4 tasks + Back
-            if (sub_selection == 0) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "Sender");
-            y += 10;
-            if (sub_selection == 1) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "Scanner");
-            y += 10;
-            if (sub_selection == 2) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "Numcast");
-            y += 10;
-            if (sub_selection == 3) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "Envmon");
-            y += 10;
-            if (sub_selection == 4) draw_selection_triangle(2, y+2);
-            draw_text(text_x, y, "< Back");
+            const char* items[] = {"Sender", "Scanner", "Numcast", "Envmon", "< Back"};
+            
+            for (uint8_t i = 0; i < max_sub_items; i++) {
+                if (i < sub_scroll_offset || i >= sub_scroll_offset + MAX_VISIBLE_ITEMS) {
+                    continue;
+                }
+                
+                uint8_t visible_index = i - sub_scroll_offset;
+                uint8_t y = BASE_Y + (visible_index * LINE_HEIGHT);
+                
+                if (sub_selection == i) draw_selection_triangle(2, y+2);
+                draw_text(text_x, y, items[i]);
+            }
             break;
+        }
     }
     
     // Bottom hint
@@ -828,9 +913,22 @@ void lcd_ui_next_selection(void)
         // Wrap around to first item
         if (current_selection >= max_selection_items) {
             current_selection = 0;
+            scroll_offset = 0;  // Reset scroll when wrapping to first item
+        } else {
+            // Update scroll offset: keep triangle visible in comfortable zone
+            // Start scrolling when selection reaches item 8 (9th item, index 8)
+            // This keeps the triangle from getting too close to the bottom
+            const uint8_t SCROLL_THRESHOLD = 8;  // Start scrolling at 9th item
+            if (current_selection >= SCROLL_THRESHOLD) {
+                // Scroll up: shift menu so selected item appears at position 8
+                scroll_offset = current_selection - SCROLL_THRESHOLD;
+            } else {
+                // No scroll needed for items 0-7
+                scroll_offset = 0;
+            }
         }
         
-        LCD_PRINT("[LCD] Main menu selection: %d\n", current_selection);
+        LCD_PRINT("[LCD] Main menu selection: %d, scroll_offset: %d\n", current_selection, scroll_offset);
         
         // Redraw main menu
         if (cached_param != NULL) {
@@ -843,9 +941,19 @@ void lcd_ui_next_selection(void)
         // Wrap around
         if (sub_selection >= max_sub_items) {
             sub_selection = 0;
+            sub_scroll_offset = 0;  // Reset scroll when wrapping to first item
+        } else {
+            // Update scroll offset for sub-menu: keep selected item visible
+            // Start scrolling when selection reaches item 9 (10th item, index 9)
+            const uint8_t SUB_SCROLL_THRESHOLD = 9;
+            if (sub_selection >= SUB_SCROLL_THRESHOLD) {
+                sub_scroll_offset = sub_selection - SUB_SCROLL_THRESHOLD;
+            } else {
+                sub_scroll_offset = 0;
+            }
         }
         
-        LCD_PRINT("[LCD] Sub-menu selection: %d/%d\n", sub_selection, max_sub_items-1);
+        LCD_PRINT("[LCD] Sub-menu selection: %d/%d, sub_scroll: %d\n", sub_selection, max_sub_items-1, sub_scroll_offset);
         
         // Redraw sub-menu
         draw_sub_menu();
@@ -881,6 +989,7 @@ void lcd_ui_expand_selection(void)
         
         menu_mode = LCD_MODE_SUB_MENU;
         sub_selection = 0;
+        sub_scroll_offset = 0;  // Reset sub-menu scroll
         
         // Draw sub-menu
         draw_sub_menu();
@@ -893,6 +1002,7 @@ void lcd_ui_expand_selection(void)
             LCD_PRINT("[LCD] Back to main menu\n");
             menu_mode = LCD_MODE_MAIN_MENU;
             sub_selection = 0;
+            sub_scroll_offset = 0;  // Reset sub-menu scroll
             
             // Redraw main menu
             if (cached_param != NULL) {
@@ -1010,6 +1120,7 @@ void lcd_ui_expand_selection(void)
             
             // Return to main menu and redraw with updated values
             menu_mode = LCD_MODE_MAIN_MENU;
+            sub_scroll_offset = 0;  // Reset sub-menu scroll
             
             if (cached_param != NULL) {
                 lcd_ui_show_startup(cached_param);
@@ -1026,7 +1137,9 @@ uint8_t lcd_ui_get_selection(void)
 void lcd_ui_reset_selection(void)
 {
     current_selection = 0;
+    scroll_offset = 0;  // Reset scroll offset too
     menu_mode = LCD_MODE_MAIN_MENU;
     sub_selection = 0;
+    sub_scroll_offset = 0;  // Reset sub-menu scroll too
     LCD_PRINT("[LCD] Selection reset to first item\n");
 }
