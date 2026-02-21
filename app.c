@@ -437,7 +437,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     // -------------------------------
     // This event indicates the device has started and the radio is ready.
     // Do not call any stack command before receiving this boot event!
-        // case sl_bt_evt_system_boot_id:
+    // case sl_bt_evt_system_boot_id:
         //     DEBUG_PRINT("[ADV] System boot - initializing\n");
         //     // 建立手机连接用的 advertising set (set 5)
         //     // losstst_svc 使用 sets 0-4 for range test
@@ -466,7 +466,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
         // -------------------------------
         // This event indicates that a new connection was opened.
-        case sl_bt_evt_connection_opened_id:
+    case sl_bt_evt_connection_opened_id:
         current_connection = evt->data.evt_connection_opened.connection;
         
         // Enable BLE log output to connected device
@@ -478,7 +478,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
         // -------------------------------
         // This event indicates that a connection was closed.
-        case sl_bt_evt_connection_closed_id:
+    case sl_bt_evt_connection_closed_id:
         // Clear BLE log connection
     #if BLE_LOG_CHARACTERISTIC_HANDLE != 0
         ble_log_clear_connection();
@@ -500,11 +500,11 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         ///////////////////////////////////////////////////////////////////////////
         // Add additional event handlers here as your application requires!      //
         ///////////////////////////////////////////////////////////////////////////
-        case sl_bt_evt_advertiser_timeout_id:
+    case sl_bt_evt_advertiser_timeout_id:
         // 手动调用我们的处理函数
         losstst_adv_sent_handler(evt->data.evt_advertiser_timeout.handle);
         break;    
-        case sl_bt_evt_scanner_legacy_advertisement_report_id: {
+    case sl_bt_evt_scanner_legacy_advertisement_report_id: {
         sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
             &evt->data.evt_scanner_legacy_advertisement_report;
         
@@ -519,7 +519,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         );
         break;
         }
-        case sl_bt_evt_scanner_extended_advertisement_report_id: {
+    case sl_bt_evt_scanner_extended_advertisement_report_id: {
         sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
             &evt->data.evt_scanner_extended_advertisement_report;
         
@@ -540,7 +540,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         }
         // -------------------------------
         // Default event handler.
-        default:
+    default:
         break;
     }
   
@@ -561,6 +561,7 @@ void sl_button_on_change(const sl_button_t *handle)
       // Set flag for processing in task context
       if (button_event_flags != NULL) {
         osEventFlagsSet(button_event_flags, BTN0_PRESSED_FLAG);
+        app_proceed();
       }
     }
   }
@@ -571,6 +572,7 @@ void sl_button_on_change(const sl_button_t *handle)
       // Set flag for processing in task context
       if (button_event_flags != NULL) {
         osEventFlagsSet(button_event_flags, BTN1_PRESSED_FLAG);
+        app_proceed();
       }
     }
   }

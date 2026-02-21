@@ -29,7 +29,7 @@
 #endif
 
 /* ================== Debug Configuration ================== */
-#define CHK_UPDATE_ADV_PROCEDURE 1  /* Set to 1 to enable debug prints */
+#define CHK_UPDATE_ADV_PROCEDURE 0  /* Set to 1 to enable debug prints */
 
 #if CHK_UPDATE_ADV_PROCEDURE
     /* Output to BLE if connected, otherwise to UART */
@@ -2279,7 +2279,8 @@ int losstst_init(void)
     int err;
     
     /* 第一層：核心 BLE 初始化 */
-    err = ble_test_init(true, true);
+    // 修改：不自动启动广告，等待用户通过 LCD 触发
+    err = ble_test_init(false, false);  // auto_start_scan=true, auto_start_adv=false
     if (err) {
         DEBUG_PRINT("Core BLE init failed: %d\n", err);
         return err;
