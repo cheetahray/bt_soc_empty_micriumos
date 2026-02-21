@@ -3559,11 +3559,13 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
         if (MANUFACTURER_ID == rcv_data_p->man_id && 
             LOSS_TEST_FORM_ID == rcv_data_p->form_id) {
             sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
-            DEBUG_PRINT("[PARSE] Valid packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
+            DEBUG_PRINT("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
             tst_form_packet_rcv(adv_info_p, rcv_data_p);
             dev_chr_p->step_success = 1;
         } else {
-            DEBUG_PRINT("[PARSE] ID mismatch - REJECTED\n");
+            DEBUG_PRINT("[PARSE] ✗ ID mismatch (got 0x%04X/0x%04X, expect 0x%04X/0x%04X) - Unknown device\n",
+                       rcv_data_p->man_id, rcv_data_p->form_id,
+                       MANUFACTURER_ID, LOSS_TEST_FORM_ID);
             dev_chr_p->step_fail = 1;
         }
     } else {
