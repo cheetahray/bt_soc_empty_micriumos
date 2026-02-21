@@ -636,7 +636,7 @@ int64_t platform_uptime_get(void) {
  * 
  * @return true if can yield (in task context), false otherwise (in ISR)
  */
-static bool platform_can_yield(void) {
+bool platform_can_yield(void) {
     /* Check if RTOS kernel is running */
     osKernelState_t state = osKernelGetState();
     if (state != osKernelRunning) {
@@ -657,7 +657,7 @@ static bool platform_can_yield(void) {
  * or higher priority to execute. This is useful in busy-wait loops
  * to prevent blocking lower-priority tasks.
  */
-static void platform_yield(void) {
+void platform_yield(void) {
     /* Use CMSIS-RTOS2 thread yield */
     osThreadYield();
 }

@@ -330,6 +330,9 @@ void sl_bt_scanner_process_extended_report(const bd_addr *addr, int8_t rssi,
                                          uint8_t secondary_phy,
                                          const uint8_t *ad_data, uint16_t ad_len);
 
+bool platform_can_yield(void);
+void platform_yield(void);                                         
+
 #ifdef __cplusplus
 }
 #endif

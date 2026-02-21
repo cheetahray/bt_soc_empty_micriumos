@@ -233,14 +233,13 @@ void app_process_action(void)
     bool re_sche = false;
     
     /* One-time initialization delay */
-    // if (!initialized) {
-    //     uptime_barrier_ms = sl_sleeptimer_get_tick_count() + 2000;
-        
-    //     /* Wait for initial startup delay */
-    //     if (sl_sleeptimer_get_tick_count() < uptime_barrier_ms) {
-    //         return;
-    //     }
-    //     initialized = true;
+    // uptime_barrier_ms = sl_sleeptimer_get_tick_count() + 2000;
+    
+    // /* Wait for initial startup delay */
+    // while (sl_sleeptimer_get_tick_count() < uptime_barrier_ms) {
+    //     if(platform_can_yield()) {
+    //         platform_yield();
+    //     } 
     // }
     
     /* ========== Task Selection Phase ========== */
