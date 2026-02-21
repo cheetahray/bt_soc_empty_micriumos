@@ -209,7 +209,7 @@
 /* ================== Constants ================== */
 
 #define MANUFACTURER_ID    0xFFFF
-#define LOSS_TEST_FORM_ID  0x0000
+#define LOSS_TEST_FORM_ID  0xBAAB
 #define LOSS_TEST_BURST_COUNT 250
 
 /* BLE AD Types */
