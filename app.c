@@ -181,20 +181,16 @@ void app_init(void)
     /* Create event flags for button handling */
     button_event_flags = osEventFlagsNew(NULL);
     if (button_event_flags == NULL) {
-        DEBUG_PRINT("[BTN] ERROR: Failed to create event flags\n");
     }
     
     /* Initialize LCD UI */
     if (lcd_ui_init() == 0) {
-        DEBUG_PRINT("[LCD] Display initialized\n");
     } else {
-        DEBUG_PRINT("[LCD] Failed to initialize display\n");
     }
     
     /* Initialize BLE loss test service */
     err = losstst_init();
     if (err) {
-        DEBUG_PRINT("ERROR: losstst_init failed: %d\n", err);
         /* Continue anyway - some features may still work */
     }
     
@@ -206,9 +202,6 @@ void app_init(void)
     
     /* Show startup screen with loaded configuration */
     lcd_ui_show_startup(&round_test_parm);
-
-    DEBUG_PRINT("=== Application Ready ===\n");
-    DEBUG_PRINT("[BLE LOG] Log characteristic handle: %d\n", BLE_LOG_CHARACTERISTIC_HANDLE);
 }
 
 // Application Process Action.
@@ -227,13 +220,11 @@ void app_process_action(void)
         
         if (flags & BTN0_PRESSED_FLAG) {
             osEventFlagsClear(button_event_flags, BTN0_PRESSED_FLAG);
-            DEBUG_PRINT("[BTN] Processing Button 0 - expand/select\n");
             lcd_ui_expand_selection();
         }
         
         if (flags & BTN1_PRESSED_FLAG) {
             osEventFlagsClear(button_event_flags, BTN1_PRESSED_FLAG);
-            DEBUG_PRINT("[BTN] Processing Button 1 - next selection\n");
             lcd_ui_next_selection();
         }
     }
@@ -303,7 +294,6 @@ void app_process_action(void)
             // Range test 使用 advertising sets 0-4
             // Connection advertising (set 5) 继续运行，允许 BLE log 访问
             // Silicon Labs BLE stack 支持多个 advertising sets 同时运行
-            DEBUG_PRINT("[ADV] Range test starting with sets 0-4 (connection set 5 remains active)\n");
         }
         if (task_SCANNER) {
             blocking_adv(0);
@@ -352,7 +342,6 @@ void app_process_action(void)
             task_SCANNER = false;
             task_SENDER = false;
             task_NUMCAST = false;
-            DEBUG_PRINT("[ADV] Range test interrupted during setup\n");
             return;
         }
         
@@ -384,7 +373,6 @@ void app_process_action(void)
             task_SCANNER = false;
             task_SENDER = false;
             task_NUMCAST = false;
-            DEBUG_PRINT("[ADV] Range test interrupted\n");
             return;
         }
     }
@@ -494,7 +482,6 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
                                             sl_bt_legacy_advertiser_connectable);
         app_assert_status(sc);
         
-        DEBUG_PRINT("[ADV] Connection advertising restarted\n");
         break;
 
         ///////////////////////////////////////////////////////////////////////////
@@ -508,9 +495,6 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
             &evt->data.evt_scanner_legacy_advertisement_report;
         
-        DEBUG_PRINT("[SCAN] Legacy ADV: RSSI=%d, len=%d\n", 
-                    scan_evt->rssi, scan_evt->data.len);
-        
         sl_bt_scanner_process_legacy_report(
             &scan_evt->address,
             scan_evt->rssi,
@@ -522,10 +506,6 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     case sl_bt_evt_scanner_extended_advertisement_report_id: {
         sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
             &evt->data.evt_scanner_extended_advertisement_report;
-        
-        DEBUG_PRINT("[SCAN] Extended ADV: RSSI=%d, PHY=%d/%d, len=%d\n",
-                    scan_evt->rssi, scan_evt->primary_phy, 
-                    scan_evt->secondary_phy, scan_evt->data.len);
         
         sl_bt_scanner_process_extended_report(
             &scan_evt->address,

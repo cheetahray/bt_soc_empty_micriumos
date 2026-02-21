@@ -740,7 +740,6 @@ static uint8_t get_adv_channel_map(bool inhibit_ch37, bool inhibit_ch38, bool in
     /* Ensure at least one channel is enabled */
     if (channel_map == 0) {
         channel_map = 0x07;  /* Fall back to all channels */
-        DEBUG_PRINT("Warning: All channels inhibited, using all channels\n");
     }
     
     return channel_map;
@@ -1133,13 +1132,11 @@ int update_adv(uint8_t index,
     
     /* Validate initialization */
     if (!svc_init_success) {
-        DEBUG_PRINT("%s: Not initialized\n", __func__);
         return -EPERM;
     }
     
     /* Validate index */
     if (index >= num_adv_set) {
-        DEBUG_PRINT("%s: Invalid index %d\n", __func__, index);
         return -EINVAL;
     }
     
@@ -1166,8 +1163,6 @@ int update_adv(uint8_t index,
         
         err = platform_create_adv_set(&default_param, &ext_adv[index]);
         if (err) {
-            DEBUG_PRINT("%s LN%d: Create failed, err %d\n", 
-                       __func__, __LINE__, err);
             return err;
         }
         
@@ -1187,8 +1182,6 @@ int update_adv(uint8_t index,
         
         err = platform_update_adv_param(ext_adv[index], adv_param);
         if (err) {
-            DEBUG_PRINT("%s LN%d: Update param failed, err %d\n",
-                       __func__, __LINE__, err);
             if (retval == 0) retval = err;
         }
         ext_adv_status[index].update_param = 1;
@@ -1204,8 +1197,6 @@ int update_adv(uint8_t index,
         
         err = platform_set_adv_data(ext_adv[index], adv_data, ad_len);
         if (err) {
-            DEBUG_PRINT("%s LN%d: Set data failed, err %d\n",
-                       __func__, __LINE__, err);
             if (retval == 0) retval = err;
         }
         ext_adv_status[index].set_data = 1;
@@ -1226,8 +1217,6 @@ int update_adv(uint8_t index,
                                     ratio_test_data_set[index], 
                                     ad_len);
         if (err) {
-            DEBUG_PRINT("%s LN%d: Set default data failed, err %d\n",
-                       __func__, __LINE__, err);
             if (retval == 0) retval = err;
         }
         ext_adv_status[index].set_data = 1;
@@ -1250,8 +1239,6 @@ int update_adv(uint8_t index,
                                 stored_adv_params[index].options);
         
         if (err) {
-            DEBUG_PRINT("%s LN%d: Start adv failed, err %d\n",
-                       __func__, __LINE__, err);
             if (retval == 0) retval = err;
         } else {
             ext_adv_status[index].start = 1;
@@ -1345,16 +1332,10 @@ int set_adv_tx_power(int8_t tx_power_dbm, uint8_t num_handles)
             );
             
             if (status != SL_STATUS_OK) {
-                DEBUG_PRINT("Failed to set TX power for adv set %d: 0x%04X\n", i, status);
                 err = -EIO;
                 // Continue to try setting other handles
             }
         }
-    }
-    
-    if (err == 0) {
-        DEBUG_PRINT("TX Power set: requested=%d.%ddBm, actual=%d.%ddBm for %d sets\n",
-                   tx_power_dbm, 0, set_tx_power / 10, abs(set_tx_power % 10), num_handles);
     }
     
     return err;
@@ -1435,7 +1416,6 @@ int passive_scan_control(int8_t method)
         );
         
         if (status != SL_STATUS_OK) {
-            DEBUG_PRINT("Failed to set scan parameters: 0x%04X\n", status);
             return -EIO;
         }
         
@@ -1446,7 +1426,6 @@ int passive_scan_control(int8_t method)
         );
         
         if (status != SL_STATUS_OK) {
-            DEBUG_PRINT("Scanning failed (err 0x%04X)\n", (unsigned int)status);
             return -EIO;
         }
         
@@ -1575,16 +1554,12 @@ int sender_setup(const test_param_t *param)
     scanner_abort_p = param->scanner_abort;
     numcast_abort_p = param->numcast_abort;
     
-    /* Print task startup banner */
-    DEBUG_PRINT("Packet Loss Test (node %03u) **** SND SIDE ****\n", device_address[0]);
-    
     /* Generate initial status message */
     sender_peek_msg();
     
     /* Set TX power for all advertising handles */
     err = set_adv_tx_power(param->txpwr, 4);
     if (err) {
-        DEBUG_PRINT("sender_setup: TX power set failed: %d\n", err);
         return err;
     }
     
@@ -1611,7 +1586,6 @@ int sender_setup(const test_param_t *param)
             err = update_adv(0, NULL, NULL, NULL);
         }
         if (err) {
-            DEBUG_PRINT("sender_setup: PHY 2M adv failed\n");
         } else {
             /* Set channel map for this advertising set */
             sl_bt_advertiser_set_channel_map(ext_adv[0], channel_map);
@@ -1629,7 +1603,6 @@ int sender_setup(const test_param_t *param)
             err = update_adv(1, NULL, NULL, NULL);
         }
         if (err) {
-            DEBUG_PRINT("sender_setup: PHY 1M adv failed\n");
         } else {
             /* Set channel map for this advertising set */
             sl_bt_advertiser_set_channel_map(ext_adv[1], channel_map);
@@ -1647,7 +1620,6 @@ int sender_setup(const test_param_t *param)
             err = update_adv(2, NULL, NULL, NULL);
         }
         if (err) {
-            DEBUG_PRINT("sender_setup: PHY Coded adv failed\n");
         } else {
             /* Set channel map for this advertising set */
             sl_bt_advertiser_set_channel_map(ext_adv[2], channel_map);
@@ -1665,7 +1637,6 @@ int sender_setup(const test_param_t *param)
             err = update_adv(3, NULL, NULL, NULL);
         }
         if (err) {
-            DEBUG_PRINT("sender_setup: BLE4 adv failed\n");
         } else {
             /* Set channel map for this advertising set */
             sl_bt_advertiser_set_channel_map(ext_adv[3], channel_map);
@@ -1675,10 +1646,7 @@ int sender_setup(const test_param_t *param)
     /* Start passive scanning */
     err = passive_scan_control(0);
     if (err) {
-        DEBUG_PRINT("sender_setup: Scan start failed: %d\n", err);
     }
-    
-    DEBUG_PRINT("Sender setup complete (TX power: %d dBm)\n", param->txpwr);
     
     return 0;
 }
@@ -1791,16 +1759,12 @@ int scanner_setup(const test_param_t *param)
     extern bool scanner_inactive;
     scanner_inactive = true;
     
-    /* Print task startup banner */
-    DEBUG_PRINT("Packet Loss Test (node %03u) **** RCV SIDE ****\n", device_address[0]);
-    
     /* Generate initial status message */
     scanner_peek_msg();
     
     /* Set TX power for potential response advertising */
     err = set_adv_tx_power(param->txpwr, 4);
     if (err) {
-        DEBUG_PRINT("scanner_setup: TX power set failed: %d with txpwr %d\n", err, param->txpwr);
         return err;
     }
     
@@ -1823,11 +1787,8 @@ int scanner_setup(const test_param_t *param)
     /* Start passive scanning */
     err = passive_scan_control(0);
     if (err) {
-        DEBUG_PRINT("scanner_setup: Scan start failed: %d\n", err);
         return err;
     }
-    
-    DEBUG_PRINT("Scanner setup complete\n");
     
     /* Update LCD display */
     lcd_ui_update(param, "Scanner", "Ready");
@@ -1869,7 +1830,6 @@ int numcast_setup(const test_param_t *param)
     /* Set TX power */
     err = set_adv_tx_power(param->txpwr, 4);
     if (err) {
-        DEBUG_PRINT("numcast_setup: TX power set failed: %d\n", err);
         return err;
     }
     
@@ -1890,7 +1850,6 @@ int numcast_setup(const test_param_t *param)
     /* Stop all advertising first (blocking mode) */
     err = stop_all_advertising();
     if (err) {
-        DEBUG_PRINT("numcast_setup: Stop advertising failed: %d\n", err);
     }
     
     /* Determine scan method based on PHY selection */
@@ -1906,7 +1865,6 @@ int numcast_setup(const test_param_t *param)
     /* Start passive scanning */
     err = passive_scan_control(scan_method);
     if (err) {
-        DEBUG_PRINT("numcast_setup: Scan start failed: %d\n", err);
     }
     
     /* Initialize number cast control variables */
@@ -1914,8 +1872,6 @@ int numcast_setup(const test_param_t *param)
     extern bool number_cast_auto;
     number_cast_rxval = UINT64_MAX;
     number_cast_auto = false;
-    
-    DEBUG_PRINT("Number cast setup complete (scan method: %d)\n", scan_method);
     
     /* Update LCD display */
     lcd_ui_update(param, "NumCast", "Ready");
@@ -1934,16 +1890,12 @@ int envmon_setup(const test_param_t *param)
     /* Stop all advertising */
     err = stop_all_advertising();
     if (err) {
-        DEBUG_PRINT("envmon_setup: Stop advertising failed: %d\n", err);
     }
     
     /* Start passive scanning */
     err = passive_scan_control(0);
     if (err) {
-        DEBUG_PRINT("envmon_setup: Scan start failed: %d\n", err);
     }
-    
-    DEBUG_PRINT("Environment monitor setup complete\n");
     
     /* Update LCD display */
     lcd_ui_update(param, "EnvMon", "Ready");
@@ -1959,7 +1911,6 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
     
     /* Check if already initialized */
     if (svc_init_success) {
-        DEBUG_PRINT("Already initialized\n");
         return -EPERM;
     }
     
@@ -1977,11 +1928,7 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
         /* Pad with zeros for EUI-64 format */
         device_address[6] = 0x00;
         device_address[7] = 0x00;
-        DEBUG_PRINT("Device address: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                   address.addr[5], address.addr[4], address.addr[3],
-                   address.addr[2], address.addr[1], address.addr[0]);
     } else {
-        DEBUG_PRINT("Bluetooth init failed (err 0x%04X)\n", (unsigned int)status);
         return -EIO;
     }
     
@@ -1991,7 +1938,6 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
     
     /* Validate advertising set configuration */
     if (num_adv_set < 5) {
-        DEBUG_PRINT("error CONFIG_BT_EXT_ADV_MAX_ADV_SET < 5\n");
         return -EINVAL;
     }
     
@@ -2011,11 +1957,9 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
     
     /* Mark as initialized */
     svc_init_success = true;
-    DEBUG_PRINT("Service initialization complete\n");
     
     /* Initialize all advertising sets if requested */
     if (auto_start_adv) {
-        DEBUG_PRINT("Initializing advertising sets...\n");
         for (uint8_t i = 0; i < num_adv_set; i++) {
             /* Use different timeout for index 4 (remote control) */
             const adv_start_param_t *start_param = (i == 4) ? 
@@ -2024,22 +1968,18 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
             
             err = update_adv(i, NULL, NULL, start_param);
             if (err) {
-                DEBUG_PRINT("Failed to initialize adv set %d: %d\n", i, err);
             }
         }
     }
     
     /* Start passive scanning if requested */
     if (auto_start_scan) {
-        DEBUG_PRINT("Starting passive scan...\n");
         err = passive_scan_control(0);  /* Scan all PHYs */
         if (err) {
-            DEBUG_PRINT("Failed to start scan: %d\n", err);
             /* Non-fatal, continue */
         }
     }
     
-    DEBUG_PRINT("BLE test initialization complete\n");
     return 0;
 }
 
@@ -2119,8 +2059,6 @@ static void init_txpwr_setval(void)
 		txpwr_setval[0][idx].pv = known_powers[i].pv;
 		idx++;
 	}
-	
-	DEBUG_PRINT("TX Power levels initialized: %d levels available\n", idx);
 	
 	/* Sort by PV (descending) for Nordic compatibility */
 	qsort(txpwr_setval[0], idx, sizeof(SV_PV_PWR_ST), 
@@ -2282,20 +2220,15 @@ int losstst_init(void)
     // 修改：不自动启动广告，等待用户通过 LCD 触发
     err = ble_test_init(false, false);  // auto_start_scan=true, auto_start_adv=false
     if (err) {
-        DEBUG_PRINT("Core BLE init failed: %d\n", err);
         return err;
     }
-    DEBUG_PRINT("✓ Core BLE initialized\n");
     
     /* 第二層：應用層初始化 */
     err = my_app_init();
     if (err) {
-        DEBUG_PRINT("Application init failed: %d\n", err);
         return err;
     }
-    DEBUG_PRINT("✓ Application layer initialized\n");
     
-    DEBUG_PRINT("=== System Ready ===\n");
     return 0;
 }
 
@@ -2414,7 +2347,6 @@ void sender_finit(void)
         update_adv(4, NULL, NULL, NULL);
     //}
     
-    DEBUG_PRINT("Sender finalized\n");
 }
 
 int losstst_sender(void)
@@ -2655,16 +2587,12 @@ int losstst_sender(void)
         //}
         
         if (lc_phy_sel[0]) {
-            DEBUG_PRINT("%s\n", peek_msg_str[0] + 2);
         }
         if (lc_phy_sel[1]) {
-            DEBUG_PRINT("%s\n", peek_msg_str[1] + 2);
         }
         if (lc_phy_sel[2]) {
-            DEBUG_PRINT("%s\n", peek_msg_str[2] + 2);
         }
         if (lc_phy_sel[3]) {
-            DEBUG_PRINT("%s\n", peek_msg_str[3] + 2);
         }
         
         /* Wait for remote response or timeout (100ms) */
@@ -2698,35 +2626,24 @@ int losstst_sender(void)
         /* ========== Phase 4: Check for completion ========== */
         /* Check each PHY for completion */
         if (lc_phy_sel[0] && sub_total_snd_2m >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
-                       (uint8_t)device_address[0],
-                       pri_phy_typ[1], sec_phy_typ[2]);
             
             device_info_form[0].pre_cnt = INT16_MAX;
             update_adv(0, NULL, ratio_test_data_set[0], p_adv_default_start_param);
         }
         
         if (lc_phy_sel[1] && sub_total_snd_1m >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
-                       (uint8_t)device_address[0],
-                       pri_phy_typ[1], sec_phy_typ[1]);
             
             device_info_form[1].pre_cnt = INT16_MAX;
             update_adv(1, NULL, ratio_test_data_set[1], p_adv_default_start_param);
         }
         
         if (lc_phy_sel[2] && sub_total_snd_s8 >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
-                       (uint8_t)device_address[0],
-                       pri_phy_typ[3], sec_phy_typ[3]);
             
             device_info_form[2].pre_cnt = INT16_MAX;
             update_adv(2, NULL, ratio_test_data_set[2], p_adv_default_start_param);
         }
         
         if (lc_phy_sel[3] && sub_total_snd_ble4 >= round_total_num) {
-            DEBUG_PRINT("SND:%u P:BLEv4 Complete\n",
-                       (uint8_t)device_address[0]);
             
             device_info_form[3].pre_cnt = INT16_MAX;
             device_info_bt4_form.device_info = device_info_form[3];
@@ -2829,9 +2746,6 @@ int losstst_scanner(void)
     /* Determine next scan method based on received pre-counts */
     next_scan_method = 0;
     
-    DEBUG_PRINT("[SCAN_LOOP] precnt_rcv: [%d, %d, %d, %d]\n",
-                precnt_rcv[0], precnt_rcv[1], precnt_rcv[2], precnt_rcv[3]);
-    
     if (0 > (assign = precnt_rcv[0]) && round_phy_sel[0]) {
         if (INT16_MIN != assign) {
             next_scan_method = 1;
@@ -2888,7 +2802,6 @@ int losstst_scanner(void)
         if (0 == complete_mark) {
             complete_mark = platform_uptime_get();
         } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
-            DEBUG_PRINT("RCV_Task completed\n");
             passive_scan_control(-1);
             return 0;
         }
@@ -2914,15 +2827,12 @@ int losstst_scanner(void)
     while (uptime_64_barrier > platform_uptime_get()) {
         /* Print received messages */
         if ('\0' != *rcv_msg_str[0]) {
-            DEBUG_PRINT("%s\n", rcv_msg_str[0]);
             *rcv_msg_str[0] = '\0';
         }
         if ('\0' != *rcv_msg_str[1]) {
-            DEBUG_PRINT("%s\n", rcv_msg_str[1]);
             *rcv_msg_str[1] = '\0';
         }
         if ('\0' != *rcv_msg_str[2]) {
-            DEBUG_PRINT("%s\n", rcv_msg_str[2]);
             *rcv_msg_str[2] = '\0';
         }
         
@@ -3485,9 +3395,6 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
         rcv_ratio_val[index][0] = subtotal;
         rcv_ratio_val[index][1] = LOSS_TEST_BURST_COUNT * rcv_stamp_lc.rec.flow;
         precnt_rcv[index] = form_p->pre_cnt;
-        DEBUG_PRINT("[RCV] PHY[%d] precnt_rcv updated: %d (subtotal=%d/%d)\n",
-                    index, precnt_rcv[index], subtotal, 
-                    LOSS_TEST_BURST_COUNT * rcv_stamp_lc.rec.flow);
         sndr_id = rcv_stamp_lc.rec.node;
         sndr_txpower = rcv_stamp_lc.rec.tx_pwr;
     }
@@ -3519,7 +3426,6 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
             } else if (0 == form_p->pre_cnt) {
                 /* Sender side burst completed */
                 precnt_rcv[index] = 0;
-                DEBUG_PRINT("[RCV] PHY[%d] Burst completed (precnt_rcv=0)\n", index);
                 remote_resp_form[index] = *form_p;
                 if (!rcv_stamp_lc.rec.dump_rcvinfo) {
                     rcv_stamp_lc.rec.dump_rcvinfo = 1;
@@ -3528,8 +3434,6 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
                 rec_sets[index] = rcv_stamp_lc.rec;
             } else if (0 > form_p->pre_cnt) {
                 precnt_rcv[index] = form_p->pre_cnt;
-                DEBUG_PRINT("[RCV] PHY[%d] precnt_rcv set to negative: %d\n", 
-                            index, precnt_rcv[index]);
             }
             
             rcv_stamp[index] = rcv_stamp_lc;

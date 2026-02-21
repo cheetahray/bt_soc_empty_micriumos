@@ -317,12 +317,9 @@ static const char* get_count_string(uint8_t idx)
 
 int lcd_ui_init(void)
 {
-    LCD_PRINT("[LCD] Initializing display...\n");
-    
     /* Enable display power on BRD4002A */
     sl_status_t status = sl_board_enable_display();
     if (status != SL_STATUS_OK) {
-        LCD_PRINT("[LCD] sl_board_enable_display() failed: 0x%lX\n", (unsigned long)status);
         return -3;
     }
     
@@ -331,7 +328,6 @@ int lcd_ui_init(void)
     
     status = DMD_init(0);
     if (status != DMD_OK) {
-        LCD_PRINT("[LCD] DMD_init() failed: 0x%X\n", (unsigned int)status);
         return -1;
     }
     
@@ -341,7 +337,6 @@ int lcd_ui_init(void)
     
     status = GLIB_contextInit(&glibContext);
     if (status != GLIB_OK) {
-        LCD_PRINT("[LCD] GLIB_contextInit() failed: 0x%X\n", (unsigned int)status);
         return -2;
     }
     
@@ -356,21 +351,17 @@ int lcd_ui_init(void)
     
     
     lcd_initialized = true;
-    LCD_PRINT("[LCD] Display initialized successfully\n");
     return 0;
 }
 
 void lcd_ui_show_startup(void *param_ptr)
 {
     if (!lcd_initialized) {
-        LCD_PRINT("[LCD] Not initialized, skipping startup screen\n");
         return;
     }
     
     test_param_t *param = (test_param_t *)param_ptr;
     cached_param = param;  // Cache for redraw and Button 1 editing
-    
-    LCD_PRINT("[LCD] Showing startup screen with config (sel=%d)\n", current_selection);
     
     // Uncomment after installing GLIB component
     
@@ -486,14 +477,11 @@ void lcd_ui_show_startup(void *param_ptr)
 void lcd_ui_update(const void *param_ptr, const char *test_mode, const char *status)
 {
     if (!lcd_initialized || !param_ptr) {
-        LCD_PRINT("[LCD] Cannot update: init=%d, param=%p\n", lcd_initialized, param_ptr);
         return;
     }
     
     const test_param_t *param = (const test_param_t *)param_ptr;
     char buf[32];
-    
-    LCD_PRINT("[LCD] Updating display: mode=%s, status=%s\n", test_mode, status);
     
     // Uncomment after installing GLIB component
     
@@ -608,8 +596,6 @@ void lcd_ui_clear(void)
         return;
     }
     
-    LCD_PRINT("[LCD] Clearing display\n");
-    
     // Uncomment after installing GLIB component
     
     GLIB_clear(&glibContext);
@@ -627,8 +613,6 @@ void lcd_ui_show_error(const char *error_msg, int error_code)
     if (!lcd_initialized) {
         return;
     }
-    
-    LCD_PRINT("[LCD] Showing error: %s (0x%X)\n", error_msg, error_code);
     
     // Uncomment after installing GLIB component
 
@@ -926,8 +910,6 @@ void lcd_ui_next_selection(void)
             }
         }
         
-        LCD_PRINT("[LCD] Main menu selection: %d, scroll_offset: %d\n", current_selection, scroll_offset);
-        
         // Redraw main menu
         if (cached_param != NULL) {
             lcd_ui_show_startup(cached_param);
@@ -951,8 +933,6 @@ void lcd_ui_next_selection(void)
             }
         }
         
-        LCD_PRINT("[LCD] Sub-menu selection: %d/%d, sub_scroll: %d\n", sub_selection, max_sub_items-1, sub_scroll_offset);
-        
         // Redraw sub-menu
         draw_sub_menu();
     }
@@ -968,12 +948,10 @@ void lcd_ui_expand_selection(void)
         // Special handling: Stop Task (no sub-menu)
         if (current_selection == 8) {
             // Stop all tasks directly
-            LCD_PRINT("[LCD] Stopping all tasks\n");
             sender_task_tgr(-1);
             scanner_task_tgr(-1);
             numcst_task_tgr(-1);
             envmon_task_tgr(-1);
-            LCD_PRINT("[LCD] All tasks stopped\n");
             
             // Stay in main menu, just redraw
             if (cached_param != NULL) {
@@ -983,7 +961,6 @@ void lcd_ui_expand_selection(void)
         }
         
         // Enter sub-menu for current item
-        LCD_PRINT("[LCD] Expanding item %d: %s\n", current_selection, item_names[current_selection]);
         
         menu_mode = LCD_MODE_SUB_MENU;
         sub_selection = 0;
@@ -997,7 +974,6 @@ void lcd_ui_expand_selection(void)
         
         if (is_back) {
             // Return to main menu
-            LCD_PRINT("[LCD] Back to main menu\n");
             menu_mode = LCD_MODE_MAIN_MENU;
             sub_selection = 0;
             sub_scroll_offset = 0;  // Reset sub-menu scroll
@@ -1008,8 +984,6 @@ void lcd_ui_expand_selection(void)
             }
         } else {
             // Apply the selected sub-option
-            LCD_PRINT("[LCD] Selected sub-option %d for item %s\n", 
-                     sub_selection, item_names[current_selection]);
             
             if (cached_param != NULL) {
                 // Update configuration based on current menu item
@@ -1017,21 +991,18 @@ void lcd_ui_expand_selection(void)
                     case 0: // TxPwr
                         if (sub_selection < sizeof(txpwr_values) / sizeof(txpwr_values[0])) {
                             cached_param->txpwr = txpwr_values[sub_selection];
-                            LCD_PRINT("[LCD] TxPwr set to %d dBm\n", cached_param->txpwr);
                         }
                         break;
                         
                     case 1: // Interval
                         if (sub_selection < get_interval_count()) {
                             cached_param->interval_idx = sub_selection;
-                            LCD_PRINT("[LCD] Interval set to index %d\n", cached_param->interval_idx);
                         }
                         break;
                         
                     case 2: // Count
                         if (sub_selection < get_count_count()) {
                             cached_param->count_idx = sub_selection;
-                            LCD_PRINT("[LCD] Count set to index %d\n", cached_param->count_idx);
                         }
                         break;
                         
@@ -1039,19 +1010,15 @@ void lcd_ui_expand_selection(void)
                         switch (sub_selection) {
                             case 0: 
                                 cached_param->phy_2m = !cached_param->phy_2m;
-                                LCD_PRINT("[LCD] 2M PHY: %s\n", cached_param->phy_2m ? "ON" : "OFF");
                                 break;
                             case 1:
                                 cached_param->phy_1m = !cached_param->phy_1m;
-                                LCD_PRINT("[LCD] 1M PHY: %s\n", cached_param->phy_1m ? "ON" : "OFF");
                                 break;
                             case 2:
                                 cached_param->phy_s8 = !cached_param->phy_s8;
-                                LCD_PRINT("[LCD] S8 PHY: %s\n", cached_param->phy_s8 ? "ON" : "OFF");
                                 break;
                             case 3:
                                 cached_param->phy_ble4 = !cached_param->phy_ble4;
-                                LCD_PRINT("[LCD] BLE4: %s\n", cached_param->phy_ble4 ? "ON" : "OFF");
                                 break;
                         }
                         break;
@@ -1060,15 +1027,12 @@ void lcd_ui_expand_selection(void)
                         switch (sub_selection) {
                             case 0:
                                 cached_param->inhibit_ch37 = !cached_param->inhibit_ch37;
-                                LCD_PRINT("[LCD] Ch37: %s\n", cached_param->inhibit_ch37 ? "OFF" : "ON");
                                 break;
                             case 1:
                                 cached_param->inhibit_ch38 = !cached_param->inhibit_ch38;
-                                LCD_PRINT("[LCD] Ch38: %s\n", cached_param->inhibit_ch38 ? "OFF" : "ON");
                                 break;
                             case 2:
                                 cached_param->inhibit_ch39 = !cached_param->inhibit_ch39;
-                                LCD_PRINT("[LCD] Ch39: %s\n", cached_param->inhibit_ch39 ? "OFF" : "ON");
                                 break;
                         }
                         break;
@@ -1076,20 +1040,16 @@ void lcd_ui_expand_selection(void)
                     case 5: // NonAnonymous - set value
                         if (sub_selection == 0) {
                             cached_param->non_ANONYMOUS = true;
-                            LCD_PRINT("[LCD] NonAnonymous: ON\n");
                         } else if (sub_selection == 1) {
                             cached_param->non_ANONYMOUS = false;
-                            LCD_PRINT("[LCD] NonAnonymous: OFF\n");
                         }
                         break;
                         
                     case 6: // IgnoreResponse - set value
                         if (sub_selection == 0) {
                             cached_param->ignore_rcv_resp = true;
-                            LCD_PRINT("[LCD] IgnoreResponse: ON\n");
                         } else if (sub_selection == 1) {
                             cached_param->ignore_rcv_resp = false;
-                            LCD_PRINT("[LCD] IgnoreResponse: OFF\n");
                         }
                         break;
                         
@@ -1097,19 +1057,15 @@ void lcd_ui_expand_selection(void)
                         switch (sub_selection) {
                             case 0: // Sender
                                 sender_task_tgr(1);
-                                LCD_PRINT("[LCD] Sender task started\n");
                                 break;
                             case 1: // Scanner
                                 scanner_task_tgr(1);
-                                LCD_PRINT("[LCD] Scanner task started\n");
                                 break;
                             case 2: // Numcast
                                 numcst_task_tgr(1);
-                                LCD_PRINT("[LCD] Numcast task started\n");
                                 break;
                             case 3: // Envmon
                                 envmon_task_tgr(1);
-                                LCD_PRINT("[LCD] Envmon task started\n");
                                 break;
                         }
                         break;
@@ -1139,5 +1095,4 @@ void lcd_ui_reset_selection(void)
     menu_mode = LCD_MODE_MAIN_MENU;
     sub_selection = 0;
     sub_scroll_offset = 0;  // Reset sub-menu scroll too
-    LCD_PRINT("[LCD] Selection reset to first item\n");
 }
