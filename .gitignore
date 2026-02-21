@@ -7,3 +7,6 @@ cmake_gcc/build/base
 cmake_gcc/build
 .projectlinkstore
 autogen/sbom
+*.DS_Store
+*.crc
+.uceditor

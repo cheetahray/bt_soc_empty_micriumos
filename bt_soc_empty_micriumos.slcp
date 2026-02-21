@@ -108,6 +108,11 @@ component:
   vendor: silabs
   id: iostream_retarget_stdio
 - package: simplicity_sdk
+  instance:
+  - vcom
+  vendor: silabs
+  id: iostream_usart
+- package: simplicity_sdk
   vendor: silabs
   id: memlcd_eusart
 - package: simplicity_sdk

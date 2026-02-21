@@ -437,112 +437,112 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     // -------------------------------
     // This event indicates the device has started and the radio is ready.
     // Do not call any stack command before receiving this boot event!
-        case sl_bt_evt_system_boot_id:
-            DEBUG_PRINT("[ADV] System boot - initializing\n");
-            // 建立手机连接用的 advertising set (set 5)
-            // losstst_svc 使用 sets 0-4 for range test
-            sc = sl_bt_advertiser_create_set(&advertising_set_handle);
-            app_assert_status(sc);
+        // case sl_bt_evt_system_boot_id:
+        //     DEBUG_PRINT("[ADV] System boot - initializing\n");
+        //     // 建立手机连接用的 advertising set (set 5)
+        //     // losstst_svc 使用 sets 0-4 for range test
+        //     sc = sl_bt_advertiser_create_set(&advertising_set_handle);
+        //     app_assert_status(sc);
 
-            // Generate data for advertising
-            sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
-                                                                                                 sl_bt_advertiser_general_discoverable);
-            app_assert_status(sc);
+        //     // Generate data for advertising
+        //     sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
+        //                                                                                          sl_bt_advertiser_general_discoverable);
+        //     app_assert_status(sc);
 
-            // Set advertising interval to 100ms.
-            sc = sl_bt_advertiser_set_timing(
-                advertising_set_handle,
-                160, // min. adv. interval (milliseconds * 1.6)
-                160, // max. adv. interval (milliseconds * 1.6)
-                0,   // adv. duration
-                0);  // max. num. adv. events
-            app_assert_status(sc);
-            // Start advertising and enable connections.
-            sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
-                                                                                 sl_bt_legacy_advertiser_connectable);
-            app_assert_status(sc);
-            DEBUG_PRINT("[ADV] Connection advertising started\n");
-            break;
+        //     // Set advertising interval to 100ms.
+        //     sc = sl_bt_advertiser_set_timing(
+        //         advertising_set_handle,
+        //         160, // min. adv. interval (milliseconds * 1.6)
+        //         160, // max. adv. interval (milliseconds * 1.6)
+        //         0,   // adv. duration
+        //         0);  // max. num. adv. events
+        //     app_assert_status(sc);
+        //     // Start advertising and enable connections.
+        //     sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
+        //                                                                          sl_bt_legacy_advertiser_connectable);
+        //     app_assert_status(sc);
+        //     DEBUG_PRINT("[ADV] Connection advertising started\n");
+        //     break;
 
-    // -------------------------------
-    // This event indicates that a new connection was opened.
-    case sl_bt_evt_connection_opened_id:
-      current_connection = evt->data.evt_connection_opened.connection;
-      
-      // Enable BLE log output to connected device
-#if BLE_LOG_CHARACTERISTIC_HANDLE != 0
-      ble_log_set_connection(current_connection, BLE_LOG_CHARACTERISTIC_HANDLE);
-      BLE_PRINTF("[BLE] Connection established\n");
-#endif
-      break;
+        // -------------------------------
+        // This event indicates that a new connection was opened.
+        case sl_bt_evt_connection_opened_id:
+        current_connection = evt->data.evt_connection_opened.connection;
+        
+        // Enable BLE log output to connected device
+    #if BLE_LOG_CHARACTERISTIC_HANDLE != 0
+        ble_log_set_connection(current_connection, BLE_LOG_CHARACTERISTIC_HANDLE);
+        BLE_PRINTF("[BLE] Connection established\n");
+    #endif
+        break;
 
-    // -------------------------------
-    // This event indicates that a connection was closed.
-    case sl_bt_evt_connection_closed_id:
-      // Clear BLE log connection
-#if BLE_LOG_CHARACTERISTIC_HANDLE != 0
-      ble_log_clear_connection();
-#endif
-      current_connection = 0xFF;
-      
-      // 重启 connection advertising（range test 期间也可重连查看 BLE log）
-      sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
-                                                 sl_bt_advertiser_general_discoverable);
-      app_assert_status(sc);
+        // -------------------------------
+        // This event indicates that a connection was closed.
+        case sl_bt_evt_connection_closed_id:
+        // Clear BLE log connection
+    #if BLE_LOG_CHARACTERISTIC_HANDLE != 0
+        ble_log_clear_connection();
+    #endif
+        current_connection = 0xFF;
+        
+        // 重启 connection advertising（range test 期间也可重连查看 BLE log）
+        sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
+                                                    sl_bt_advertiser_general_discoverable);
+        app_assert_status(sc);
 
-      sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
-                                         sl_bt_legacy_advertiser_connectable);
-      app_assert_status(sc);
-      
-      DEBUG_PRINT("[ADV] Connection advertising restarted\n");
-      break;
+        sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
+                                            sl_bt_legacy_advertiser_connectable);
+        app_assert_status(sc);
+        
+        DEBUG_PRINT("[ADV] Connection advertising restarted\n");
+        break;
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Add additional event handlers here as your application requires!      //
-    ///////////////////////////////////////////////////////////////////////////
-    case sl_bt_evt_advertiser_timeout_id:
-      // 手动调用我们的处理函数
-      losstst_adv_sent_handler(evt->data.evt_advertiser_timeout.handle);
-      break;    
-    case sl_bt_evt_scanner_legacy_advertisement_report_id: {
-      sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
-          &evt->data.evt_scanner_legacy_advertisement_report;
-      
-      DEBUG_PRINT("[SCAN] Legacy ADV: RSSI=%d, len=%d\n", 
-                  scan_evt->rssi, scan_evt->data.len);
-      
-      sl_bt_scanner_process_legacy_report(
-          &scan_evt->address,
-          scan_evt->rssi,
-          scan_evt->data.data,
-          scan_evt->data.len
-      );
-      break;
+        ///////////////////////////////////////////////////////////////////////////
+        // Add additional event handlers here as your application requires!      //
+        ///////////////////////////////////////////////////////////////////////////
+        case sl_bt_evt_advertiser_timeout_id:
+        // 手动调用我们的处理函数
+        losstst_adv_sent_handler(evt->data.evt_advertiser_timeout.handle);
+        break;    
+        case sl_bt_evt_scanner_legacy_advertisement_report_id: {
+        sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
+            &evt->data.evt_scanner_legacy_advertisement_report;
+        
+        DEBUG_PRINT("[SCAN] Legacy ADV: RSSI=%d, len=%d\n", 
+                    scan_evt->rssi, scan_evt->data.len);
+        
+        sl_bt_scanner_process_legacy_report(
+            &scan_evt->address,
+            scan_evt->rssi,
+            scan_evt->data.data,
+            scan_evt->data.len
+        );
+        break;
+        }
+        case sl_bt_evt_scanner_extended_advertisement_report_id: {
+        sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
+            &evt->data.evt_scanner_extended_advertisement_report;
+        
+        DEBUG_PRINT("[SCAN] Extended ADV: RSSI=%d, PHY=%d/%d, len=%d\n",
+                    scan_evt->rssi, scan_evt->primary_phy, 
+                    scan_evt->secondary_phy, scan_evt->data.len);
+        
+        sl_bt_scanner_process_extended_report(
+            &scan_evt->address,
+            scan_evt->rssi,
+            scan_evt->tx_power,
+            scan_evt->primary_phy,
+            scan_evt->secondary_phy,
+            scan_evt->data.data,
+            scan_evt->data.len
+        );
+        break;
+        }
+        // -------------------------------
+        // Default event handler.
+        default:
+        break;
     }
-    case sl_bt_evt_scanner_extended_advertisement_report_id: {
-      sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
-          &evt->data.evt_scanner_extended_advertisement_report;
-      
-      DEBUG_PRINT("[SCAN] Extended ADV: RSSI=%d, PHY=%d/%d, len=%d\n",
-                  scan_evt->rssi, scan_evt->primary_phy, 
-                  scan_evt->secondary_phy, scan_evt->data.len);
-      
-      sl_bt_scanner_process_extended_report(
-          &scan_evt->address,
-          scan_evt->rssi,
-          scan_evt->tx_power,
-          scan_evt->primary_phy,
-          scan_evt->secondary_phy,
-          scan_evt->data.data,
-          scan_evt->data.len
-      );
-      break;
-    }
-    // -------------------------------
-    // Default event handler.
-    default:
-      break;
-  }
   
   // Signal the application task to proceed after BLE event processing
   app_proceed();

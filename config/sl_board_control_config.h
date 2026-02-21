@@ -34,11 +34,11 @@
 // <<< Use Configuration Wizard in Context Menu >>>
 
 // <q SL_BOARD_ENABLE_VCOM> Enable Virtual COM UART
-// <i> Default: 0
-#define SL_BOARD_ENABLE_VCOM                    0
+// <i> Default: 1
+#define SL_BOARD_ENABLE_VCOM                    1
 
 // <q SL_BOARD_ENABLE_DISPLAY> Enable Display
-// <i> Default: 0
+// <i> Default: 1
 #define SL_BOARD_ENABLE_DISPLAY                 1
 
 // <q SL_BOARD_ENABLE_SENSOR_RHT> Enable Relative Humidity and Temperature sensor
