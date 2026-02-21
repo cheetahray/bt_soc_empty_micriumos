@@ -2828,6 +2828,9 @@ int losstst_scanner(void)
     /* Determine next scan method based on received pre-counts */
     next_scan_method = 0;
     
+    DEBUG_PRINT("[SCAN_LOOP] precnt_rcv: [%d, %d, %d, %d]\n",
+                precnt_rcv[0], precnt_rcv[1], precnt_rcv[2], precnt_rcv[3]);
+    
     if (0 > (assign = precnt_rcv[0]) && round_phy_sel[0]) {
         if (INT16_MIN != assign) {
             next_scan_method = 1;
@@ -3481,6 +3484,9 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
         rcv_ratio_val[index][0] = subtotal;
         rcv_ratio_val[index][1] = LOSS_TEST_BURST_COUNT * rcv_stamp_lc.rec.flow;
         precnt_rcv[index] = form_p->pre_cnt;
+        DEBUG_PRINT("[RCV] PHY[%d] precnt_rcv updated: %d (subtotal=%d/%d)\n",
+                    index, precnt_rcv[index], subtotal, 
+                    LOSS_TEST_BURST_COUNT * rcv_stamp_lc.rec.flow);
         sndr_id = rcv_stamp_lc.rec.node;
         sndr_txpower = rcv_stamp_lc.rec.tx_pwr;
     }
@@ -3512,6 +3518,7 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
             } else if (0 == form_p->pre_cnt) {
                 /* Sender side burst completed */
                 precnt_rcv[index] = 0;
+                DEBUG_PRINT("[RCV] PHY[%d] Burst completed (precnt_rcv=0)\n", index);
                 remote_resp_form[index] = *form_p;
                 if (!rcv_stamp_lc.rec.dump_rcvinfo) {
                     rcv_stamp_lc.rec.dump_rcvinfo = 1;
@@ -3520,6 +3527,8 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
                 rec_sets[index] = rcv_stamp_lc.rec;
             } else if (0 > form_p->pre_cnt) {
                 precnt_rcv[index] = form_p->pre_cnt;
+                DEBUG_PRINT("[RCV] PHY[%d] precnt_rcv set to negative: %d\n", 
+                            index, precnt_rcv[index]);
             }
             
             rcv_stamp[index] = rcv_stamp_lc;
@@ -3628,6 +3637,7 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
     if (BT_DATA_FLAGS == data->type) {
         if (0 == dev_chr_p->step_raw) {
             dev_chr_p->step_flag++;
+            DEBUG_PRINT("[PARSE] FLAGS found\n");
         } else {
             dev_chr_p->step_fail = 1;
         }
@@ -3636,13 +3646,19 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
     else if (1 == dev_chr_p->step_flag && BT_DATA_MANUFACTURER_DATA == data->type) {
         device_info_t *rcv_data_p = (device_info_t *)data->data;
         
+        DEBUG_PRINT("[PARSE] Manu data: man_id=0x%04X, form_id=0x%04X (expect 0x%04X, 0x%04X)\n",
+                    rcv_data_p->man_id, rcv_data_p->form_id, 
+                    MANUFACTURER_ID, LOSS_TEST_FORM_ID);
+        
         /* Validate manufacturer ID and form ID */
         if (MANUFACTURER_ID == rcv_data_p->man_id && 
             LOSS_TEST_FORM_ID == rcv_data_p->form_id) {
             sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
+            DEBUG_PRINT("[PARSE] Valid packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
             tst_form_packet_rcv(adv_info_p, rcv_data_p);
             dev_chr_p->step_success = 1;
         } else {
+            DEBUG_PRINT("[PARSE] ID mismatch - REJECTED\n");
             dev_chr_p->step_fail = 1;
         }
     } else {

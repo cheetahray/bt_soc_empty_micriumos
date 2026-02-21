@@ -508,6 +508,9 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
       sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
           &evt->data.evt_scanner_legacy_advertisement_report;
       
+      DEBUG_PRINT("[SCAN] Legacy ADV: RSSI=%d, len=%d\n", 
+                  scan_evt->rssi, scan_evt->data.len);
+      
       sl_bt_scanner_process_legacy_report(
           &scan_evt->address,
           scan_evt->rssi,
@@ -519,6 +522,10 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     case sl_bt_evt_scanner_extended_advertisement_report_id: {
       sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
           &evt->data.evt_scanner_extended_advertisement_report;
+      
+      DEBUG_PRINT("[SCAN] Extended ADV: RSSI=%d, PHY=%d/%d, len=%d\n",
+                  scan_evt->rssi, scan_evt->primary_phy, 
+                  scan_evt->secondary_phy, scan_evt->data.len);
       
       sl_bt_scanner_process_extended_report(
           &scan_evt->address,
