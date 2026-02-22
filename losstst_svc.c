@@ -3222,14 +3222,31 @@ static void numcst_rssi_calc(int64_t tm_stamp)
 
 int losstst_numcast(void)
 {
+    static uint32_t call_count = 0;
+    call_count++;
+    
     if (!svc_init_success) {
+        DEBUG_PRINT("NumCast[%lu]: svc_init_success=false, returning -1\n", call_count);
         return -1;
     }
     
     static bool cast_auto = false;
+    static uint64_t last_cast_val = 0;
+    static bool first_run = true;  /* Flag to force entry on first call */
+    static bool not_met_logged = false;  /* Flag to log "not met" only once */
+    
+    /* Print periodic heartbeat every 100 calls */
+    if (call_count % 100 == 0) {
+        DEBUG_PRINT("[NumCast Round %lu]\n", call_count / 100);
+    }
     
     /* Check for abort condition */
-    if(numcast_abort_p()) {
+    bool abort_flag = numcast_abort_p();
+    if (call_count % 100 == 0) {
+        DEBUG_PRINT("[NumCast Round %lu] abort_flag=%d\n", call_count / 100, abort_flag);
+    }
+    if(abort_flag) {
+        DEBUG_PRINT("=== NumCast: Abort detected ===\n");
         cast_auto = false;
         number_cast_rxval = UINT64_MAX;
         
@@ -3248,9 +3265,36 @@ int losstst_numcast(void)
         return 0;
     }
     
-    /* Check if number cast value or auto mode changed */
-    if (number_cast_val != *(uint64_t *)p_number_cast_form || cast_auto != number_cast_auto) {
+    /* Check if number cast value or auto mode changed, or this is first run */
+    if (first_run || number_cast_val != *(uint64_t *)p_number_cast_form || cast_auto != number_cast_auto) {
+        not_met_logged = false;  /* Reset flag when condition is met */
+        
+        bool was_first_run = first_run;
+        first_run = false;  /* Clear first run flag */
         number_cast_val = *(uint64_t *)p_number_cast_form;
+        
+        /* Debug: Show condition check when entering */
+        DEBUG_PRINT("NumCast check: ");
+        print_int64("current_val=", (int64_t)last_cast_val);
+        DEBUG_PRINT(" -> ");
+        print_int64("", (int64_t)number_cast_val);
+        DEBUG_PRINT(" cast_auto=%d number_cast_auto=%d first_run=%d\n", 
+                   cast_auto, number_cast_auto, was_first_run);
+        
+        if (was_first_run) {
+            DEBUG_PRINT("=== NumCast: First run initialization ===\n");
+        } else {
+            DEBUG_PRINT("=== NumCast: Value changed ===\n");
+        }
+        print_int64("  Old value: ", (int64_t)last_cast_val);
+        DEBUG_PRINT("\n");
+        print_int64("  New value: ", (int64_t)number_cast_val);
+        DEBUG_PRINT("\n");
+        DEBUG_PRINT("  Auto mode: %s -> %s\n", 
+                   cast_auto ? "ON" : "OFF",
+                   number_cast_auto ? "ON" : "OFF");
+        
+        last_cast_val = number_cast_val;
         cast_auto = number_cast_auto;
         
         /* Prepare start parameters: continuous if auto, 10 events if manual */
@@ -3258,13 +3302,25 @@ int losstst_numcast(void)
             p_adv_default_start_param :  /* Continuous (timeout=0, events=0) */
             BT_LE_EXT_ADV_START_PARAM(0, 10);  /* 10 events */
         
+        DEBUG_PRINT("  Mode: %s (events=%u)\n", 
+                   cast_auto ? "CONTINUOUS" : "10 EVENTS",
+                   cast_auto ? 0 : 10);
+        
         adv_param_t work_adv_param;
         uint8_t channel_map = get_adv_channel_map(inhibit_ch37, inhibit_ch38, inhibit_ch39);
+        DEBUG_PRINT("  Channel map: 0x%02X (Ch37:%s Ch38:%s Ch39:%s)\n",
+                   channel_map,
+                   inhibit_ch37 ? "OFF" : "ON",
+                   inhibit_ch38 ? "OFF" : "ON",
+                   inhibit_ch39 ? "OFF" : "ON");
         
         for (int idx = 0; idx < 4; idx++) {
             blocking_adv(idx);
             
             if (round_phy_sel[idx]) {
+                const char *phy_names[] = {"BLE4(1M)", "BLE5_1M", "BLE5_2M", "BLE5_CODED"};
+                DEBUG_PRINT("  PHY[%d] %s: Starting numcast advertising\n", idx, phy_names[idx]);
+                
                 /* Get base parameters from the table */
                 const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][idx];
                 work_adv_param = *base_param;
@@ -3286,6 +3342,17 @@ int losstst_numcast(void)
                 /* Set channel map for this advertising set */
                 sl_bt_advertiser_set_channel_map(ext_adv[idx], channel_map);
             }
+        }
+        DEBUG_PRINT("=== NumCast: Advertising started on selected PHYs ===\n");
+    } else {
+        /* Only print once when condition is not met */
+        if (!not_met_logged) {
+            DEBUG_PRINT("NumCast check: ");
+            print_int64("current_val=", (int64_t)number_cast_val);
+            DEBUG_PRINT(" ");
+            print_int64("form_val=", (int64_t)(*(uint64_t *)p_number_cast_form));
+            DEBUG_PRINT(" cast_auto=%d number_cast_auto=%d first_run=0 (no change)\n", cast_auto, number_cast_auto);
+            not_met_logged = true;
         }
     }
     
