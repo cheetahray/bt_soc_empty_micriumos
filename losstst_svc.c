@@ -919,13 +919,58 @@ static int platform_create_adv_set(const adv_param_t *param,
      * Needs access to options to determine extended vs legacy and flags.
      */
     static int platform_start_adv(adv_handle_t handle,
-                                  //const adv_start_param_t *param,
+                                  const adv_start_param_t *param,
                                   uint16_t options)
     {
         sl_status_t status;
         bool use_extended_adv = (options & BT_LE_ADV_OPT_EXT_ADV) != 0;
         bool is_connectable = (options & BT_LE_ADV_OPT_CONNECTABLE) != 0;
         uint8_t sl_flags;
+        
+        /* Set advertising duration based on num_events parameter */
+        if (param != NULL && param->num_events > 0) {
+            /* Calculate duration: num_events * max_interval (stored params) */
+            /* Duration is in units of 10ms, interval is in 0.625ms units */
+            uint8_t adv_index = handle;
+            if (adv_index < MAX_ADV_SETS) {
+                uint32_t max_interval_ms = (stored_adv_params[adv_index].interval_max * 625) / 1000;
+                uint32_t duration_10ms = (param->num_events * max_interval_ms) / 10;
+                
+                /* Limit duration to max 16-bit value (655.35 seconds) */
+                if (duration_10ms > 0xFFFF) {
+                    duration_10ms = 0xFFFF;
+                }
+                
+                /* Set advertiser timing with duration */
+                status = sl_bt_advertiser_set_timing(
+                    handle,
+                    stored_adv_params[adv_index].interval_min,
+                    stored_adv_params[adv_index].interval_max,
+                    (uint16_t)duration_10ms,  /* Duration in 10ms units */
+                    0  /* Max events = 0 (use duration instead) */
+                );
+                
+                if (status != SL_STATUS_OK) {
+                    DEBUG_PRINT("Failed to set adv timing: 0x%04X\n", status);
+                }
+            }
+        } else if (param != NULL && param->timeout > 0) {
+            /* Use timeout parameter (in units of 10ms) */
+            uint8_t adv_index = handle;
+            if (adv_index < MAX_ADV_SETS) {
+                status = sl_bt_advertiser_set_timing(
+                    handle,
+                    stored_adv_params[adv_index].interval_min,
+                    stored_adv_params[adv_index].interval_max,
+                    param->timeout,  /* Duration in 10ms units */
+                    0  /* Max events = 0 */
+                );
+                
+                if (status != SL_STATUS_OK) {
+                    DEBUG_PRINT("Failed to set adv timing: 0x%04X\n", status);
+                }
+            }
+        }
         
         if (use_extended_adv) {
             // Extended advertising
@@ -1240,12 +1285,12 @@ int update_adv(uint8_t index,
     
     /* ========== Start advertising ========== */
     if (!ext_adv_status[index].start || adv_start_param != NULL) {
-        // const adv_start_param_t *start_param = adv_start_param 
-        //                                      ? adv_start_param 
-        //                                      : &p_adv_default_start_param;
+        const adv_start_param_t *start_param = adv_start_param 
+                                             ? adv_start_param 
+                                             : p_adv_default_start_param;
         
         /* Silicon Labs needs options to determine extended/legacy and flags */
-        err = platform_start_adv(ext_adv[index],// start_param, 
+        err = platform_start_adv(ext_adv[index], start_param, 
                                 stored_adv_params[index].options);
         
         if (err) {
@@ -1254,6 +1299,7 @@ int update_adv(uint8_t index,
             if (retval == 0) retval = err;
         } else {
             ext_adv_status[index].start = 1;
+            ext_adv_status[index].stop = 0;  /* Clear stop flag when starting */
         }
     }
     
@@ -2774,7 +2820,12 @@ int losstst_scanner(void)
         memset(rcv_stats, 0, sizeof(rcv_stats));
         memset(rcv_ratio_val, 0, sizeof(rcv_ratio_val));
         memset(rcv_rssi_val, 0, sizeof(rcv_rssi_val));
+        memset(precnt_rcv, 0, sizeof(precnt_rcv));
         first_round = true;
+        
+        /* Reset heartbeat for new scan session */
+        hrtbt = 0;
+        hrtbt_stamp = 0;
     }
     
     /* Start passive scanning */
@@ -2791,13 +2842,22 @@ int losstst_scanner(void)
     /* Heartbeat timeout check */
     if (0 == hrtbt_stamp) {
         hrtbt_stamp = platform_uptime_get();
-    } else if (
-        ((NULL != scanner_abort_p) && (true == (abort = ((bool (*)(void))scanner_abort_p)())))
-        || ((round_scan_method ? 30000 : 10000) < (hrtbt += platform_uptime_get() - hrtbt_stamp))
-        || (period_msec * (first_round ? 5 : 1) < hrtbt)) {
-        hrtbt = hrtbt_stamp = 0;
-        passive_scan_control(-1);  /* Stop scanning */
-        return -1;
+        hrtbt = 0;
+    } else {
+        int64_t current_time = platform_uptime_get();
+        int64_t elapsed = current_time - hrtbt_stamp;
+        hrtbt += elapsed;
+        hrtbt_stamp = current_time;  /* Update timestamp for next iteration */
+        
+        /* Check timeout conditions */
+        if (((NULL != scanner_abort_p) && (true == (abort = ((bool (*)(void))scanner_abort_p)())))
+            || ((round_scan_method ? 30000 : 10000) < hrtbt)
+            || (period_msec * (first_round ? 5 : 1) < hrtbt)) {
+            DEBUG_PRINT("Scanner: Timeout - hrtbt=%lld, period=%lld\n", hrtbt, period_msec);
+            hrtbt = hrtbt_stamp = 0;
+            passive_scan_control(-1);  /* Stop scanning */
+            return -1;
+        }
     }
     
     /* Stop all advertising before receiving */
@@ -2839,16 +2899,31 @@ int losstst_scanner(void)
         if (INT16_MAX != assign) next_scan_method = 1;
     } else {
         /* Check if all receptions complete */
-        if ((!rec_sets[0].flow && !rec_sets[1].flow && !rec_sets[2].flow && !rec_sets[3].flow)) {
-            /* No flows detected yet */
-        } else if ((rec_sets[0].complete || !rec_sets[0].flow)
-                && (rec_sets[1].complete || !rec_sets[1].flow)
-                && (rec_sets[2].complete || !rec_sets[2].flow)
-                && (rec_sets[3].complete || !rec_sets[3].flow)) {
-            /* All complete */
-            hrtbt = hrtbt_stamp = 0;
-            retval = 0;
-            passive_scan_control(-1);  /* Stop scanning */
+        bool has_flow = (rec_sets[0].flow || rec_sets[1].flow || rec_sets[2].flow || rec_sets[3].flow);
+        
+        if (has_flow) {
+            /* Check if all active flows are complete */
+            bool all_complete = true;
+            
+            for (int i = 0; i < 4; i++) {
+                /* If PHY is selected and has flow, check if complete */
+                if (round_phy_sel[i] && rec_sets[i].flow) {
+                    DEBUG_PRINT("Scanner: PHY[%d] flow=%d complete=%d\n", 
+                               i, rec_sets[i].flow, rec_sets[i].complete);
+                    if (!rec_sets[i].complete) {
+                        all_complete = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (all_complete) {
+                /* All active flows complete */
+                hrtbt = hrtbt_stamp = 0;
+                retval = 0;
+                passive_scan_control(-1);  /* Stop scanning */
+                DEBUG_PRINT("Scanner: All flows complete\n");
+            }
         }
         return retval;
     }
@@ -3009,6 +3084,10 @@ int losstst_scanner(void)
     if (phy_mark[3]) precnt_rcv[3] = 0;
     
     rcv_state_val[0] = rcv_state_val[1] = rcv_state_val[2] = rcv_state_val[3] = 0;
+    
+    /* Reset heartbeat unconditionally (Nordic original behavior)
+     * This prevents false timeouts from heartbeat accumulation
+     */
     hrtbt = hrtbt_stamp = 0;
     
     if (abort) retval = -1;
@@ -3490,6 +3569,8 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
                 /* Sender side completed */
                 rcv_stamp_lc.rec.complete = 1;
                 rec_sets[index] = rcv_stamp_lc.rec;
+                DEBUG_PRINT("Scanner: PHY[%d] COMPLETE flag set (pre_cnt=%d)\n", 
+                           index, form_p->pre_cnt);
             } else if (0 == form_p->pre_cnt) {
                 /* Sender side burst completed */
                 precnt_rcv[index] = 0;
@@ -3515,6 +3596,7 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
                    sizeof(peek_rcv_rssi[index]));
         } else {
             /* New flow from same sender */
+            /* Output final stats for previous flow before switching */
             rcv_rssi_val[index][0] = rcv_stamp[index].rec.rssi = 
                 rcv_stamp[index].rssi_acc / rcv_stamp[index].rssi_idx;
             rcv_rssi_val[index][1] = (1 >= rcv_stamp[index].rssi_idx) ? 
@@ -3533,6 +3615,7 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
                 rec_sets[index] = rcv_stamp[index].rec;
             }
 
+            /* Start new flow with fresh rcv_stamp_lc (dump_rcvinfo=0 by default) */
             rssi_idx_init(&rcv_stamp_lc, info_rssi);
             rcv_stamp[index] = rcv_stamp_lc;
         }
@@ -3609,7 +3692,7 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
     if (BT_DATA_FLAGS == data->type) {
         if (0 == dev_chr_p->step_raw) {
             dev_chr_p->step_flag++;
-            DEBUG_PRINT("[PARSE] FLAGS found\n");
+            //DEBUG_PRINT("[PARSE] FLAGS found\n");
         } else {
             dev_chr_p->step_fail = 1;
         }
@@ -3618,21 +3701,28 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
     else if (1 == dev_chr_p->step_flag && BT_DATA_MANUFACTURER_DATA == data->type) {
         device_info_t *rcv_data_p = (device_info_t *)data->data;
         
-        DEBUG_PRINT("[PARSE] Manu data: man_id=0x%04X, form_id=0x%04X (expect 0x%04X, 0x%04X)\n",
-                    rcv_data_p->man_id, rcv_data_p->form_id, 
-                    MANUFACTURER_ID, LOSS_TEST_FORM_ID);
+        //DEBUG_PRINT("[PARSE] Manu data: man_id=0x%04X, form_id=0x%04X (expect 0x%04X, 0x%04X)\n",
+        //            rcv_data_p->man_id, rcv_data_p->form_id, 
+        //            MANUFACTURER_ID, LOSS_TEST_FORM_ID);
         
         /* Validate manufacturer ID and form ID */
         if (MANUFACTURER_ID == rcv_data_p->man_id && 
             LOSS_TEST_FORM_ID == rcv_data_p->form_id) {
             sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
-            DEBUG_PRINT("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
+            
+            /* Only print if pre_cnt changed from last time */
+            static int16_t last_pre_cnt = INT16_MIN;
+            if (rcv_data_p->pre_cnt != last_pre_cnt) {
+                DEBUG_PRINT("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
+                last_pre_cnt = rcv_data_p->pre_cnt;
+            }
+            
             tst_form_packet_rcv(adv_info_p, rcv_data_p);
             dev_chr_p->step_success = 1;
         } else {
-            DEBUG_PRINT("[PARSE] ✗ ID mismatch (got 0x%04X/0x%04X, expect 0x%04X/0x%04X) - Unknown device\n",
-                       rcv_data_p->man_id, rcv_data_p->form_id,
-                       MANUFACTURER_ID, LOSS_TEST_FORM_ID);
+            // DEBUG_PRINT("[PARSE] ✗ ID mismatch (got 0x%04X/0x%04X, expect 0x%04X/0x%04X) - Unknown device\n",
+            //            rcv_data_p->man_id, rcv_data_p->form_id,
+            //            MANUFACTURER_ID, LOSS_TEST_FORM_ID);
             dev_chr_p->step_fail = 1;
         }
     } else {
