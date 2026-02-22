@@ -947,11 +947,12 @@ void lcd_ui_expand_selection(void)
     if (menu_mode == LCD_MODE_MAIN_MENU) {
         // Special handling: Stop Task (no sub-menu)
         if (current_selection == 8) {
-            // Stop all tasks directly
-            sender_task_tgr(-1);
-            scanner_task_tgr(-1);
-            numcst_task_tgr(-1);
-            envmon_task_tgr(-1);
+            // Stop all tasks directly - use correct pattern: -task_tgr(0)
+            LCD_PRINT("LCD: Stop All tasks triggered\n");
+            sender_task_tgr(-sender_task_tgr(0));
+            scanner_task_tgr(-scanner_task_tgr(0));
+            numcst_task_tgr(-numcst_task_tgr(0));
+            envmon_task_tgr(-envmon_task_tgr(0));
             
             // Stay in main menu, just redraw
             if (cached_param != NULL) {

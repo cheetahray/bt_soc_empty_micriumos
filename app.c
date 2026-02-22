@@ -85,6 +85,8 @@ static int is_re_sche(int update)
 {
     int result = 0;
     static int16_t extscr_tgr_stamp = 0;
+    static int16_t last_logged_stamp = -1;
+    static int16_t last_logged_tgr_val = -1;
     
     /* Get maximum of all task triggers */
     int16_t tgr_val = sender_task_tgr(0);
@@ -92,9 +94,19 @@ static int is_re_sche(int update)
     if (numcst_task_tgr(0) > tgr_val) tgr_val = numcst_task_tgr(0);
     if (envmon_task_tgr(0) > tgr_val) tgr_val = envmon_task_tgr(0);
     
+    /* Debug only when values change */
+    if (last_logged_stamp != extscr_tgr_stamp || last_logged_tgr_val != tgr_val) {
+        DEBUG_PRINT("is_re_sche: update=%d stamp=%d tgr_val=%d numcst=%d\n", 
+                   update, extscr_tgr_stamp, tgr_val, numcst_task_tgr(0));
+        last_logged_stamp = extscr_tgr_stamp;
+        last_logged_tgr_val = tgr_val;
+    }
+    
     if (extscr_tgr_stamp == 0 && tgr_val != 0) {
         /* Task trigger activated */
         result = 2;
+        DEBUG_PRINT("is_re_sche: Task activated! stamp=0->%d, result=%d, update=%d\n", 
+                   tgr_val, result, update);
         if (update) {
             extscr_tgr_stamp = tgr_val;
         }
@@ -102,6 +114,8 @@ static int is_re_sche(int update)
     else if (extscr_tgr_stamp != 0 && tgr_val == 0) {
         /* Task trigger cleared */
         result = -2;
+        DEBUG_PRINT("is_re_sche: Task STOPPED! stamp=%d->0, result=%d, update=%d\n", 
+                   extscr_tgr_stamp, result, update);
         if (update) {
             extscr_tgr_stamp = tgr_val;
         }
