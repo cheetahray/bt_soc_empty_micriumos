@@ -2010,22 +2010,30 @@ int envmon_setup(const test_param_t *param)
         return -EINVAL;
     }
     
+    DEBUG_PRINT("=== EnvMon Setup: Starting environment monitoring ===\n");
+    
     int err = 0;
     
     /* Stop all advertising */
     err = stop_all_advertising();
     if (err) {
         DEBUG_PRINT("envmon_setup: Stop advertising failed: %d\n", err);
+    } else {
+        DEBUG_PRINT("envmon_setup: All advertising stopped\n");
     }
     
     /* Start passive scanning */
     err = passive_scan_control(0);
     if (err) {
         DEBUG_PRINT("envmon_setup: Scan start failed: %d\n", err);
+    } else {
+        DEBUG_PRINT("envmon_setup: Passive scan started (all PHYs)\n");
     }
     
     /* Update LCD display */
     lcd_ui_update(param, "EnvMon", "Ready");
+    
+    DEBUG_PRINT("=== EnvMon Setup: Complete ===\n");
     
     return 0;
 }
@@ -3369,6 +3377,9 @@ int losstst_numcast(void)
  */
 static void env_rssi_calc(void)
 {
+    static uint32_t calc_count = 0;
+    calc_count++;
+    
     int64_t expire_tm = platform_uptime_get();
     
     for (unsigned int phy_idx = 0; phy_idx < ARRAY_SIZE(env_rssi_rec); phy_idx++) {
@@ -3395,20 +3406,48 @@ static void env_rssi_calc(void)
         env_rssi[phy_idx][0] = avg;
         env_rssi[phy_idx][1] = (20 == lower) ? 0 : lower;
         env_rssi[phy_idx][2] = (-127 == upper) ? 0 : upper;
+        
+        /* Debug: Print RSSI stats periodically (every 100 calculations) */
+        if (calc_count % 100 == 0 && cnt > 0) {
+            const char *phy_names[] = {"2M", "1M", "Coded", "BLE4"};
+            DEBUG_PRINT("EnvMon PHY[%u] %s: samples=%d avg=%d min=%d max=%d\n",
+                       phy_idx, phy_names[phy_idx], cnt, (int)avg, 
+                       env_rssi[phy_idx][1], env_rssi[phy_idx][2]);
+        }
     }
 }
 
 int losstst_envmon(void)
 {
+    static uint32_t call_count = 0;
+    static bool first_run = true;
+    call_count++;
+    
     if (!svc_init_success) {
+        DEBUG_PRINT("EnvMon[%lu]: svc_init_success=false, returning -1\n", call_count);
         return -1;
+    }
+    
+    /* Print first run and periodic heartbeat */
+    if (first_run) {
+        DEBUG_PRINT("=== EnvMon: First run initialization ===\n");
+        first_run = false;
+    } else if (call_count % 100 == 0) {
+        DEBUG_PRINT("[EnvMon Round %lu]\n", call_count / 100);
     }
     
     /* Calculate environment RSSI statistics */
     env_rssi_calc();
     
     /* Check if envmon task is still active */
-    return (0 != envmon_task_tgr(0)) ? 1 : 0;
+    int task_status = envmon_task_tgr(0);
+    int result = (task_status != 0) ? 1 : 0;
+    
+    if (result == 0) {
+        DEBUG_PRINT("=== EnvMon: Task stopped (task_status=%d) ===\n", task_status);
+    }
+    
+    return result;
 }
 
 /**
