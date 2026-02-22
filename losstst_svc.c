@@ -856,8 +856,8 @@ static int platform_create_adv_set(const adv_param_t *param,
             // Get PHY settings from options
             get_phy_from_options(param->options, &primary_phy, &secondary_phy);
             
-            DEBUG_PRINT("Setting PHY: handle=%d, pri=%d, sec=%d\n", 
-                       *handle, primary_phy, secondary_phy);
+            // DEBUG_PRINT("Setting PHY: handle=%d, pri=%d, sec=%d\n", 
+            //            *handle, primary_phy, secondary_phy);
             
             // Set PHY
             status = sl_bt_extended_advertiser_set_phy(*handle, 
@@ -909,8 +909,8 @@ static int platform_create_adv_set(const adv_param_t *param,
         if (use_extended_adv) {
             get_phy_from_options(param->options, &primary_phy, &secondary_phy);
             
-            DEBUG_PRINT("Updating PHY: handle=%d, pri=%d, sec=%d\n", 
-                       handle, primary_phy, secondary_phy);
+            // DEBUG_PRINT("Updating PHY: handle=%d, pri=%d, sec=%d\n", 
+            //            handle, primary_phy, secondary_phy);
             
             status = sl_bt_extended_advertiser_set_phy(handle,
                                                        primary_phy,
@@ -976,6 +976,12 @@ static int platform_create_adv_set(const adv_param_t *param,
                 if (duration_10ms > 0xFFFF) {
                     duration_10ms = 0xFFFF;
                 }
+                
+                DEBUG_PRINT("  [ADV %d] num_events=%u, interval=%lu ms, duration=%lu ms (0x%04lX * 10ms)\n",
+                           handle, param->num_events, 
+                           (unsigned long)max_interval_ms,
+                           (unsigned long)(duration_10ms * 10),
+                           (unsigned long)duration_10ms);
                 
                 /* Set advertiser timing with duration */
                 status = sl_bt_advertiser_set_timing(
@@ -2630,6 +2636,10 @@ int losstst_sender(void)
         }
         
         /* Start burst advertising (250 events per PHY) */
+        DEBUG_PRINT("=== Starting Burst Phase ===\n");
+        DEBUG_PRINT("Burst count per PHY: %d\n", LOSS_TEST_BURST_COUNT);
+        DEBUG_PRINT("Expected duration: %lu ms\n", (unsigned long)period_msec);
+        
         for (int idx = 0; idx <= 3; idx++) {
             if (lc_phy_sel[idx]) {
                 /* Use configured interval for burst transmission */
@@ -2637,6 +2647,7 @@ int losstst_sender(void)
                 if (idx == 3) {
                     device_info_bt4_form.device_info = device_info_form[3];
                 }
+                DEBUG_PRINT("PHY[%d]: Starting burst with %d events\n", idx, LOSS_TEST_BURST_COUNT);
                 update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_burst_start_param);
                 snd_state_val[idx] = 2;
             }
@@ -2686,10 +2697,13 @@ int losstst_sender(void)
             return -1;
         }
         
+        DEBUG_PRINT("=== Burst Phase Complete ===\n");
+        
         /* ========== Phase 3: Post-burst reporting ========== */
         ack_remote_resp[0] = ack_remote_resp[1] = ack_remote_resp[2] = ack_remote_resp[3] = false;
         
         /* Update counters and start reporting advertising */
+        DEBUG_PRINT("=== Updating Transmission Counters ===\n");
         for (int idx = 0; idx <= 3; idx++) {
             if (lc_phy_sel[idx]) {
                 device_info_form[idx].pre_cnt = 0;
@@ -2703,18 +2717,31 @@ int losstst_sender(void)
                 update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
                 
                 /* Update transmission counters */
+                uint16_t old_count, new_count;
                 switch (idx) {
                     case 0:
+                        old_count = sub_total_snd_2m;
                         xmt_ratio_val[idx][0] = (sub_total_snd_2m += LOSS_TEST_BURST_COUNT);
+                        new_count = sub_total_snd_2m;
+                        DEBUG_PRINT("PHY[0] 2M: %u -> %u (+%d)\n", old_count, new_count, LOSS_TEST_BURST_COUNT);
                         break;
                     case 1:
+                        old_count = sub_total_snd_1m;
                         xmt_ratio_val[idx][0] = (sub_total_snd_1m += LOSS_TEST_BURST_COUNT);
+                        new_count = sub_total_snd_1m;
+                        DEBUG_PRINT("PHY[1] 1M: %u -> %u (+%d)\n", old_count, new_count, LOSS_TEST_BURST_COUNT);
                         break;
                     case 2:
+                        old_count = sub_total_snd_s8;
                         xmt_ratio_val[idx][0] = (sub_total_snd_s8 += LOSS_TEST_BURST_COUNT);
+                        new_count = sub_total_snd_s8;
+                        DEBUG_PRINT("PHY[2] S8: %u -> %u (+%d)\n", old_count, new_count, LOSS_TEST_BURST_COUNT);
                         break;
                     case 3:
+                        old_count = sub_total_snd_ble4;
                         xmt_ratio_val[idx][0] = (sub_total_snd_ble4 += LOSS_TEST_BURST_COUNT);
+                        new_count = sub_total_snd_ble4;
+                        DEBUG_PRINT("PHY[3] BLE4: %u -> %u (+%d)\n", old_count, new_count, LOSS_TEST_BURST_COUNT);
                         break;
                 }
                 snd_state_val[idx] = 3;
