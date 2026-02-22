@@ -620,11 +620,35 @@ static const uint16_t value_interval[][2]={
 	//,{VALUE_ADV_INT_MIN_n3, VALUE_ADV_INT_MAX_n3}
 };
 
+/**
+ * @brief Helper to print 64-bit integer (newlib-nano doesn't support %lld)
+ * 
+ * Splits 64-bit value into high and low 32-bit parts for printing.
+ * Format: prefix + (high << 32 | low)
+ * 
+ * @param prefix String to print before the number
+ * @param value 64-bit value to print
+ */
+static void print_int64(const char *prefix, int64_t value) {
+    uint32_t high = (uint32_t)(value >> 32);
+    uint32_t low = (uint32_t)(value & 0xFFFFFFFFUL);
+    
+    if (high != 0) {
+        DEBUG_PRINT("%s%lu:%lu", prefix, (unsigned long)high, (unsigned long)low);
+    } else {
+        DEBUG_PRINT("%s%lu", prefix, (unsigned long)low);
+    }
+}
+
 int64_t platform_uptime_get(void) {
     // 使用64位 tick 计数（避免溢出）
     uint64_t ticks = sl_sleeptimer_get_tick_count64();
     uint64_t ms = 0;
-    sl_sleeptimer_tick64_to_ms(ticks, &ms);
+    sl_status_t status = sl_sleeptimer_tick64_to_ms(ticks, &ms);
+    if (status != SL_STATUS_OK) {
+        DEBUG_PRINT("ERROR: sl_sleeptimer_tick64_to_ms failed: 0x%04lX\n", (unsigned long)status);
+        return 0;
+    }
     return (int64_t)ms;
 }
 
@@ -656,10 +680,13 @@ bool platform_can_yield(void) {
  * Voluntarily gives up the CPU to allow other ready tasks of the same
  * or higher priority to execute. This is useful in busy-wait loops
  * to prevent blocking lower-priority tasks.
+ * 
+ * Note: Using osDelay(1) instead of osThreadYield() because yield may
+ * not return if there are no other ready tasks at the same priority.
  */
 void platform_yield(void) {
-    /* Use CMSIS-RTOS2 thread yield */
-    osThreadYield();
+    /* Use osDelay to ensure we get scheduled back */
+    osDelay(1);
 }
 
 /* ================== Platform Abstraction Functions ================== */
@@ -805,6 +832,7 @@ static int platform_create_adv_set(const adv_param_t *param,
         // Step 1: Create advertising set
         status = sl_bt_advertiser_create_set(handle);
         if (status != SL_STATUS_OK) {
+            DEBUG_PRINT("ERROR: Failed to create adv set, status=0x%04X\n", status);
             return -EIO;
         }
         
@@ -828,11 +856,15 @@ static int platform_create_adv_set(const adv_param_t *param,
             // Get PHY settings from options
             get_phy_from_options(param->options, &primary_phy, &secondary_phy);
             
+            DEBUG_PRINT("Setting PHY: handle=%d, pri=%d, sec=%d\n", 
+                       *handle, primary_phy, secondary_phy);
+            
             // Set PHY
             status = sl_bt_extended_advertiser_set_phy(*handle, 
                                                        primary_phy,
                                                        secondary_phy);
             if (status != SL_STATUS_OK) {
+                DEBUG_PRINT("ERROR: Failed to set PHY, status=0x%04X\n", status);
                 return -EIO;
             }
             
@@ -877,10 +909,14 @@ static int platform_create_adv_set(const adv_param_t *param,
         if (use_extended_adv) {
             get_phy_from_options(param->options, &primary_phy, &secondary_phy);
             
+            DEBUG_PRINT("Updating PHY: handle=%d, pri=%d, sec=%d\n", 
+                       handle, primary_phy, secondary_phy);
+            
             status = sl_bt_extended_advertiser_set_phy(handle,
                                                        primary_phy,
                                                        secondary_phy);
             if (status != SL_STATUS_OK) {
+                DEBUG_PRINT("ERROR: Failed to update PHY, status=0x%04X\n", status);
                 return -EIO;
             }
         }
@@ -1382,7 +1418,7 @@ int set_adv_tx_power(int8_t tx_power_dbm, uint8_t num_handles)
     
     // Set TX power for each advertising handle used by range test
     for (uint8_t i = 0; i < num_handles && i < MAX_ADV_SETS; i++) {
-        if (ext_adv[i] != 0xFF) {  // Only set if handle is valid
+        if (ext_adv_status[i].initialized) {  // Only set if advertising set is created
             status = sl_bt_advertiser_set_tx_power(
                 ext_adv[i],
                 set_tx_power,
@@ -2449,6 +2485,11 @@ int losstst_sender(void)
         return -1;
     }
     
+    // Debug: Check if time system works at function entry
+    // int64_t entry_time = platform_uptime_get();
+    // print_int64("losstst_sender: Entry time=", entry_time);
+    // DEBUG_PRINT(" ms\n");
+    
     int retval = 1;
     int16_t lc_pre_cnt;
     uint16_t sub_phy0, sub_phy1, sub_phy2;//, sub_phy3;
@@ -2510,6 +2551,11 @@ int losstst_sender(void)
             
             /* Wait 1 second */
             uptime_64_barrier += 1000;
+            // int64_t current_time = platform_uptime_get();
+            // print_int64("Countdown wait: barrier=", uptime_64_barrier);
+            // print_int64(", current=", current_time);
+            // DEBUG_PRINT(", lc_pre_cnt=%d\n", lc_pre_cnt);
+            
             while (uptime_64_barrier > platform_uptime_get()) {
                 if (platform_can_yield()) {
                     platform_yield();
@@ -2517,6 +2563,7 @@ int losstst_sender(void)
                 if (sender_abort_p != NULL) {
                     bool (*abort_fn)(void) = (bool (*)(void))sender_abort_p;
                     if ((abort = abort_fn())) {
+                        DEBUG_PRINT("Abort detected in wait loop\n");
                         break;
                     }
                 }
@@ -2853,7 +2900,9 @@ int losstst_scanner(void)
         if (((NULL != scanner_abort_p) && (true == (abort = ((bool (*)(void))scanner_abort_p)())))
             || ((round_scan_method ? 30000 : 10000) < hrtbt)
             || (period_msec * (first_round ? 5 : 1) < hrtbt)) {
-            DEBUG_PRINT("Scanner: Timeout - hrtbt=%lld, period=%lld\n", hrtbt, period_msec);
+            print_int64("Scanner: Timeout - hrtbt=", hrtbt);
+            print_int64(", period=", period_msec);
+            DEBUG_PRINT("\n");
             hrtbt = hrtbt_stamp = 0;
             passive_scan_control(-1);  /* Stop scanning */
             return -1;
