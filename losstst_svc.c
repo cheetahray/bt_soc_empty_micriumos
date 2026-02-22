@@ -497,10 +497,10 @@ static const char *sec_phy_typ[] = {
 };
 
 /* Message format strings */
-static const char *peek_sndpkt_form = "\\xff\\xffSND:%03u P:%s/%s R:%u/%u T:%d";
-static const char *peek_sndpkt_btv4_form = "\\xff\\xffSND:%03u P:%s%s R:%u/%u T:%d";
-static const char *peek_rcvpkt_form = "\\xff\\xffRCV:%03u P:%s/%s R:%u/%u S:%s(%s..%s) T:%s";
-static const char *peek_rcvpkt_btv4_form = "\\xff\\xffRCV:%03u P:%s%s R:%u/%u S:%s(%s..%s) T:%s";
+static const char *peek_sndpkt_form = "\xff\xffSND:%03u P:%s/%s R:%u/%u T:%d";
+static const char *peek_sndpkt_btv4_form = "\xff\xffSND:%03u P:%s%s R:%u/%u T:%d";
+static const char *peek_rcvpkt_form = "\xff\xffRCV:%03u P:%s/%s R:%u/%u S:%s(%s..%s) T:%s";
+static const char *peek_rcvpkt_btv4_form = "\xff\xffRCV:%03u P:%s%s R:%u/%u S:%s(%s..%s) T:%s";
 /* Log format strings */
 static const char *log_sender_form = "SENDER:%03u P:%s/%s R:%d/%u S:%s(%s..%s) T:%s";
 static const char *log_rcvpkt_form = "RCV:%03u P:%s/%s R:%d/%u S:%s(%s..%s) T:%s";
@@ -832,7 +832,7 @@ static int platform_create_adv_set(const adv_param_t *param,
         // Step 1: Create advertising set
         status = sl_bt_advertiser_create_set(handle);
         if (status != SL_STATUS_OK) {
-            DEBUG_PRINT("ERROR: Failed to create adv set, status=0x%04X\n", status);
+            DEBUG_PRINT("ERROR: Failed to create adv set, status=0x%04lX\n", (unsigned long)status);
             return -EIO;
         }
         
@@ -864,7 +864,7 @@ static int platform_create_adv_set(const adv_param_t *param,
                                                        primary_phy,
                                                        secondary_phy);
             if (status != SL_STATUS_OK) {
-                DEBUG_PRINT("ERROR: Failed to set PHY, status=0x%04X\n", status);
+                DEBUG_PRINT("ERROR: Failed to set PHY, status=0x%04lX\n", (unsigned long)status);
                 return -EIO;
             }
             
@@ -916,7 +916,7 @@ static int platform_create_adv_set(const adv_param_t *param,
                                                        primary_phy,
                                                        secondary_phy);
             if (status != SL_STATUS_OK) {
-                DEBUG_PRINT("ERROR: Failed to update PHY, status=0x%04X\n", status);
+                DEBUG_PRINT("ERROR: Failed to update PHY, status=0x%04lX\n", (unsigned long)status);
                 return -EIO;
             }
         }
@@ -987,7 +987,7 @@ static int platform_create_adv_set(const adv_param_t *param,
                 );
                 
                 if (status != SL_STATUS_OK) {
-                    DEBUG_PRINT("Failed to set adv timing: 0x%04X\n", status);
+                    DEBUG_PRINT("Failed to set adv timing: 0x%04lX\n", (unsigned long)status);
                 }
             }
         } else if (param != NULL && param->timeout > 0) {
@@ -1003,7 +1003,7 @@ static int platform_create_adv_set(const adv_param_t *param,
                 );
                 
                 if (status != SL_STATUS_OK) {
-                    DEBUG_PRINT("Failed to set adv timing: 0x%04X\n", status);
+                    DEBUG_PRINT("Failed to set adv timing: 0x%04lX\n", (unsigned long)status);
                 }
             }
         }
@@ -1426,7 +1426,7 @@ int set_adv_tx_power(int8_t tx_power_dbm, uint8_t num_handles)
             );
             
             if (status != SL_STATUS_OK) {
-                DEBUG_PRINT("Failed to set TX power for adv set %d: 0x%04X\n", i, status);
+                DEBUG_PRINT("Failed to set TX power for adv set %d: 0x%04lX\n", i, (unsigned long)status);
                 err = -EIO;
                 // Continue to try setting other handles
             }
@@ -1516,7 +1516,7 @@ int passive_scan_control(int8_t method)
         );
         
         if (status != SL_STATUS_OK) {
-            DEBUG_PRINT("Failed to set scan parameters: 0x%04X\n", status);
+            DEBUG_PRINT("Failed to set scan parameters: 0x%04lX\n", (unsigned long)status);
             return -EIO;
         }
         
