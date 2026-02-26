@@ -47,6 +47,47 @@
     } \
 } while(0)
 
+/* Scan RX verbose log switch: 1=on, 0=off */
+#ifndef SCAN_RX_VERBOSE_LOG
+#define SCAN_RX_VERBOSE_LOG 1
+#endif
+
+#if SCAN_RX_VERBOSE_LOG
+#define SCAN_LOG(fmt, ...) DEBUG_PRINT(fmt, ##__VA_ARGS__)
+#else
+#define SCAN_LOG(fmt, ...) do { } while (0)
+#endif
+
+/* Optional scan log target address filter (printed order: addr[5]:...:addr[0]) */
+#ifndef SCAN_LOG_TARGET_FILTER
+#define SCAN_LOG_TARGET_FILTER 1
+#endif
+
+#define SCAN_LOG_TARGET_ADDR_5 0xC3
+#define SCAN_LOG_TARGET_ADDR_4 0xD7
+#define SCAN_LOG_TARGET_ADDR_3 0x89
+#define SCAN_LOG_TARGET_ADDR_2 0x36
+#define SCAN_LOG_TARGET_ADDR_1 0xDA
+#define SCAN_LOG_TARGET_ADDR_0 0x9E
+
+static bool scan_log_addr_match(const bd_addr *addr)
+{
+#if SCAN_LOG_TARGET_FILTER
+    if (addr == NULL) {
+        return false;
+    }
+    return (addr->addr[5] == SCAN_LOG_TARGET_ADDR_5
+            && addr->addr[4] == SCAN_LOG_TARGET_ADDR_4
+            && addr->addr[3] == SCAN_LOG_TARGET_ADDR_3
+            && addr->addr[2] == SCAN_LOG_TARGET_ADDR_2
+            && addr->addr[1] == SCAN_LOG_TARGET_ADDR_1
+            && addr->addr[0] == SCAN_LOG_TARGET_ADDR_0);
+#else
+    (void)addr;
+    return true;
+#endif
+}
+
 // The advertising set handle allocated from Bluetooth stack.
 static uint8_t advertising_set_handle = 0xff;
 
@@ -433,8 +474,11 @@ void app_process_action(void)
 void sl_bt_on_event(sl_bt_msg_t *evt)
 {
   sl_status_t sc;
+        uint32_t evt_id = SL_BT_MSG_ID(evt->header);
+    static uint32_t legacy_scan_evt_count = 0;
+    static uint32_t ext_scan_evt_count = 0;
 
-    switch (SL_BT_MSG_ID(evt->header)) {
+        switch (evt_id) {
     // -------------------------------
     // This event indicates the device has started and the radio is ready.
     // Do not call any stack command before receiving this boot event!
@@ -507,6 +551,19 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     case sl_bt_evt_scanner_legacy_advertisement_report_id: {
         sl_bt_evt_scanner_legacy_advertisement_report_t *scan_evt = 
             &evt->data.evt_scanner_legacy_advertisement_report;
+        bool log_this = scan_log_addr_match(&scan_evt->address);
+
+        legacy_scan_evt_count++;
+        if (log_this && (legacy_scan_evt_count <= 5 || (legacy_scan_evt_count % 200U) == 0U)) {
+            SCAN_LOG("[SCAN_EVT][LEGACY] evt=0x%08lX cnt=%lu len=%u rssi=%d addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                     (unsigned long)evt_id,
+                     (unsigned long)legacy_scan_evt_count,
+                     scan_evt->data.len,
+                     scan_evt->rssi,
+                     scan_evt->address.addr[5], scan_evt->address.addr[4],
+                     scan_evt->address.addr[3], scan_evt->address.addr[2],
+                     scan_evt->address.addr[1], scan_evt->address.addr[0]);
+        }
         
         sl_bt_scanner_process_legacy_report(
             &scan_evt->address,
@@ -519,6 +576,22 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     case sl_bt_evt_scanner_extended_advertisement_report_id: {
         sl_bt_evt_scanner_extended_advertisement_report_t *scan_evt = 
             &evt->data.evt_scanner_extended_advertisement_report;
+        bool log_this = scan_log_addr_match(&scan_evt->address);
+
+        ext_scan_evt_count++;
+        if (log_this && (ext_scan_evt_count <= 5 || (ext_scan_evt_count % 100U) == 0U)) {
+            SCAN_LOG("[SCAN_EVT][EXT] evt=0x%08lX cnt=%lu len=%u rssi=%d txpwr=%d phy=%u/%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                     (unsigned long)evt_id,
+                     (unsigned long)ext_scan_evt_count,
+                     scan_evt->data.len,
+                     scan_evt->rssi,
+                     scan_evt->tx_power,
+                     scan_evt->primary_phy,
+                     scan_evt->secondary_phy,
+                     scan_evt->address.addr[5], scan_evt->address.addr[4],
+                     scan_evt->address.addr[3], scan_evt->address.addr[2],
+                     scan_evt->address.addr[1], scan_evt->address.addr[0]);
+        }
         
         sl_bt_scanner_process_extended_report(
             &scan_evt->address,

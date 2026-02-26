@@ -424,7 +424,7 @@ target_compile_options(slc PUBLIC
     $<$<COMPILE_LANGUAGE:C>:-mcmse>
     $<$<COMPILE_LANGUAGE:C>:-Wall>
     $<$<COMPILE_LANGUAGE:C>:-Wextra>
-    $<$<COMPILE_LANGUAGE:C>:-Os>
+    $<$<COMPILE_LANGUAGE:C>:-Og>
     $<$<COMPILE_LANGUAGE:C>:-fdata-sections>
     $<$<COMPILE_LANGUAGE:C>:-ffunction-sections>
     $<$<COMPILE_LANGUAGE:C>:-fomit-frame-pointer>
@@ -440,7 +440,7 @@ target_compile_options(slc PUBLIC
     $<$<COMPILE_LANGUAGE:CXX>:-mcmse>
     $<$<COMPILE_LANGUAGE:CXX>:-Wall>
     $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
-    $<$<COMPILE_LANGUAGE:CXX>:-Os>
+    $<$<COMPILE_LANGUAGE:CXX>:-Og>
     $<$<COMPILE_LANGUAGE:CXX>:-fdata-sections>
     $<$<COMPILE_LANGUAGE:CXX>:-ffunction-sections>
     $<$<COMPILE_LANGUAGE:CXX>:-fomit-frame-pointer>

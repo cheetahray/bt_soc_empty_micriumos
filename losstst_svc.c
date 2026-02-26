@@ -45,6 +45,47 @@
     #define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
 #endif
 
+/* Scan RX verbose log switch: 1=on, 0=off */
+#ifndef SCAN_RX_VERBOSE_LOG
+#define SCAN_RX_VERBOSE_LOG 1
+#endif
+
+#if SCAN_RX_VERBOSE_LOG
+#define SCAN_LOG(fmt, ...) DEBUG_PRINT(fmt, ##__VA_ARGS__)
+#else
+#define SCAN_LOG(fmt, ...) do { } while (0)
+#endif
+
+/* Optional scan log target address filter (printed order: addr[5]:...:addr[0]) */
+#ifndef SCAN_LOG_TARGET_FILTER
+#define SCAN_LOG_TARGET_FILTER 1
+#endif
+
+#define SCAN_LOG_TARGET_ADDR_5 0xC3
+#define SCAN_LOG_TARGET_ADDR_4 0xD7
+#define SCAN_LOG_TARGET_ADDR_3 0x89
+#define SCAN_LOG_TARGET_ADDR_2 0x36
+#define SCAN_LOG_TARGET_ADDR_1 0xDA
+#define SCAN_LOG_TARGET_ADDR_0 0x9E
+
+static bool scan_log_addr_match(const bd_addr *addr)
+{
+#if SCAN_LOG_TARGET_FILTER
+    if (addr == NULL) {
+        return false;
+    }
+    return (addr->addr[5] == SCAN_LOG_TARGET_ADDR_5
+            && addr->addr[4] == SCAN_LOG_TARGET_ADDR_4
+            && addr->addr[3] == SCAN_LOG_TARGET_ADDR_3
+            && addr->addr[2] == SCAN_LOG_TARGET_ADDR_2
+            && addr->addr[1] == SCAN_LOG_TARGET_ADDR_1
+            && addr->addr[0] == SCAN_LOG_TARGET_ADDR_0);
+#else
+    (void)addr;
+    return true;
+#endif
+}
+
 /* ================== Advertising Options Presets ================== */
 /* Pre-defined advertising option combinations for common use cases */
 #define BT4_ADV_OPT_CLR_MASK (BT_LE_ADV_OPT_USE_TX_POWER | BT_LE_ADV_OPT_ANONYMOUS | \
@@ -815,6 +856,21 @@ void get_phy_from_options(uint16_t nordic_options, uint8_t *primary_phy, uint8_t
 
 /* ================== Silicon Labs Platform Implementations ================== */
 
+static int get_adv_index_by_handle(adv_handle_t handle)
+{
+    for (int i = 0; i < MAX_ADV_SETS; i++) {
+        if (ext_adv_status[i].initialized && ext_adv[i] == handle) {
+            return i;
+        }
+    }
+
+    if (handle < MAX_ADV_SETS) {
+        return (int)handle;
+    }
+
+    return -1;
+}
+
 /**
  * @brief Create and configure advertising set based on options
  * 
@@ -959,17 +1015,37 @@ static int platform_create_adv_set(const adv_param_t *param,
                                   uint16_t options)
     {
         sl_status_t status;
+        int adv_index;
+        uint16_t interval_min;
+        uint16_t interval_max;
         bool use_extended_adv = (options & BT_LE_ADV_OPT_EXT_ADV) != 0;
         bool is_connectable = (options & BT_LE_ADV_OPT_CONNECTABLE) != 0;
         uint8_t sl_flags;
+
+        adv_index = get_adv_index_by_handle(handle);
+        if (adv_index < 0) {
+            DEBUG_PRINT("Failed to start adv: unknown handle=%u\n", handle);
+            return -EINVAL;
+        }
+
+        interval_min = stored_adv_params[adv_index].interval_min;
+        interval_max = stored_adv_params[adv_index].interval_max;
+
+        if (interval_min == 0 || interval_max == 0) {
+            interval_min = PARAM_ADV_INT_MIN_0;
+            interval_max = PARAM_ADV_INT_MAX_0;
+            stored_adv_params[adv_index].interval_min = interval_min;
+            stored_adv_params[adv_index].interval_max = interval_max;
+            DEBUG_PRINT("[ADV %u] interval was zero, fallback to default min=0x%04X max=0x%04X\n",
+                       handle, interval_min, interval_max);
+        }
         
         /* Set advertising duration based on num_events parameter */
         if (param != NULL && param->num_events > 0) {
             /* Calculate duration: num_events * max_interval (stored params) */
             /* Duration is in units of 10ms, interval is in 0.625ms units */
-            uint8_t adv_index = handle;
             if (adv_index < MAX_ADV_SETS) {
-                uint32_t max_interval_ms = (stored_adv_params[adv_index].interval_max * 625) / 1000;
+                uint32_t max_interval_ms = (interval_max * 625) / 1000;
                 uint32_t duration_10ms = (param->num_events * max_interval_ms) / 10;
                 
                 /* Limit duration to max 16-bit value (655.35 seconds) */
@@ -986,30 +1062,53 @@ static int platform_create_adv_set(const adv_param_t *param,
                 /* Set advertiser timing with duration */
                 status = sl_bt_advertiser_set_timing(
                     handle,
-                    stored_adv_params[adv_index].interval_min,
-                    stored_adv_params[adv_index].interval_max,
+                    interval_min,
+                    interval_max,
                     (uint16_t)duration_10ms,  /* Duration in 10ms units */
                     0  /* Max events = 0 (use duration instead) */
                 );
                 
                 if (status != SL_STATUS_OK) {
-                    DEBUG_PRINT("Failed to set adv timing: 0x%04lX\n", (unsigned long)status);
+                    DEBUG_PRINT("Failed to set adv timing: status=0x%04lX handle=%u interval_min=0x%04X interval_max=0x%04X duration_10ms=0x%04X\n",
+                               (unsigned long)status,
+                               handle,
+                               interval_min,
+                               interval_max,
+                               (uint16_t)duration_10ms);
+                    if (status == SL_STATUS_INVALID_PARAMETER) {
+                        DEBUG_PRINT("  [ADV %u][Hint] invalid parameter: %s%s%s (interval units=0.625ms, duration units=10ms)\n",
+                                   handle,
+                                   (interval_min > interval_max) ? "interval_min > interval_max; " : "",
+                                   (interval_min < 0x0020 || interval_max < 0x0020) ? "interval < 20ms; " : "",
+                                   (interval_max > 0xFFFF) ? "interval > max; " : "check set state/options");
+                    }
                 }
             }
         } else if (param != NULL && param->timeout > 0) {
             /* Use timeout parameter (in units of 10ms) */
-            uint8_t adv_index = handle;
             if (adv_index < MAX_ADV_SETS) {
                 status = sl_bt_advertiser_set_timing(
                     handle,
-                    stored_adv_params[adv_index].interval_min,
-                    stored_adv_params[adv_index].interval_max,
+                    interval_min,
+                    interval_max,
                     param->timeout,  /* Duration in 10ms units */
                     0  /* Max events = 0 */
                 );
                 
                 if (status != SL_STATUS_OK) {
-                    DEBUG_PRINT("Failed to set adv timing: 0x%04lX\n", (unsigned long)status);
+                    DEBUG_PRINT("Failed to set adv timing: status=0x%04lX handle=%u interval_min=0x%04X interval_max=0x%04X duration_10ms=0x%04X\n",
+                               (unsigned long)status,
+                               handle,
+                               interval_min,
+                               interval_max,
+                               param->timeout);
+                    if (status == SL_STATUS_INVALID_PARAMETER) {
+                        DEBUG_PRINT("  [ADV %u][Hint] invalid parameter: %s%s%s (interval units=0.625ms, duration units=10ms)\n",
+                                   handle,
+                                   (interval_min > interval_max) ? "interval_min > interval_max; " : "",
+                                   (interval_min < 0x0020 || interval_max < 0x0020) ? "interval < 20ms; " : "",
+                                   (param->timeout == 0) ? "duration is zero; " : "check set state/options");
+                    }
                 }
             }
         }
@@ -2888,6 +2987,8 @@ int losstst_scanner(void)
     static bool phy_mark[4];
     static int64_t hrtbt, hrtbt_stamp;
     static bool first_round;
+    static int16_t last_flow_state[4] = { INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN };
+    static int8_t last_complete_state[4] = { -1, -1, -1, -1 };
     
     /* Initialize on first call or after inactive period */
     if (scanner_inactive) {
@@ -2904,6 +3005,10 @@ int losstst_scanner(void)
         memset(rcv_rssi_val, 0, sizeof(rcv_rssi_val));
         memset(precnt_rcv, 0, sizeof(precnt_rcv));
         first_round = true;
+        for (int i = 0; i < 4; i++) {
+            last_flow_state[i] = INT16_MIN;
+            last_complete_state[i] = -1;
+        }
         
         /* Reset heartbeat for new scan session */
         hrtbt = 0;
@@ -2992,8 +3097,13 @@ int losstst_scanner(void)
             for (int i = 0; i < 4; i++) {
                 /* If PHY is selected and has flow, check if complete */
                 if (round_phy_sel[i] && rec_sets[i].flow) {
-                    DEBUG_PRINT("Scanner: PHY[%d] flow=%d complete=%d\n", 
-                               i, rec_sets[i].flow, rec_sets[i].complete);
+                    if (last_flow_state[i] != rec_sets[i].flow
+                        || last_complete_state[i] != rec_sets[i].complete) {
+                        DEBUG_PRINT("Scanner: PHY[%d] flow=%d complete=%d\n",
+                                   i, rec_sets[i].flow, rec_sets[i].complete);
+                        last_flow_state[i] = rec_sets[i].flow;
+                        last_complete_state[i] = rec_sets[i].complete;
+                    }
                     if (!rec_sets[i].complete) {
                         all_complete = false;
                         break;
@@ -3869,6 +3979,10 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
 static bool test_form_parser(adv_data_t *data, void *user_data)
 {
     dev_found_param_t *dev_chr_p = (dev_found_param_t *)user_data;
+    sl_adv_info_t *log_adv_info = dev_chr_p->adv_info_p;
+    bool log_this = (log_adv_info == NULL) ? true : scan_log_addr_match(&log_adv_info->address);
+    static uint32_t test_form_id_mismatch_count = 0;
+    static uint32_t test_form_short_mfg_count = 0;
     
     /* Check for FLAGS element */
     if (BT_DATA_FLAGS == data->type) {
@@ -3881,6 +3995,17 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
     }
     /* Check for MANUFACTURER_DATA element */
     else if (1 == dev_chr_p->step_flag && BT_DATA_MANUFACTURER_DATA == data->type) {
+        if (data->data_len < sizeof(device_info_t)) {
+            test_form_short_mfg_count++;
+            if (log_this && (test_form_short_mfg_count <= 5 || (test_form_short_mfg_count % 100U) == 0U)) {
+                SCAN_LOG("[PARSE][DROP] short manufacturer data len=%u need>=%u\n",
+                         data->data_len,
+                         (unsigned int)sizeof(device_info_t));
+            }
+            dev_chr_p->step_fail = 1;
+            return (dev_chr_p->step_completed) ? false : true;
+        }
+
         device_info_t *rcv_data_p = (device_info_t *)data->data;
         
         //DEBUG_PRINT("[PARSE] Manu data: man_id=0x%04X, form_id=0x%04X (expect 0x%04X, 0x%04X)\n",
@@ -3894,17 +4019,22 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
             
             /* Only print if pre_cnt changed from last time */
             static int16_t last_pre_cnt = INT16_MIN;
-            if (rcv_data_p->pre_cnt != last_pre_cnt) {
-                DEBUG_PRINT("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
+            if (log_this && rcv_data_p->pre_cnt != last_pre_cnt) {
+                SCAN_LOG("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
                 last_pre_cnt = rcv_data_p->pre_cnt;
             }
             
             tst_form_packet_rcv(adv_info_p, rcv_data_p);
             dev_chr_p->step_success = 1;
         } else {
-            // DEBUG_PRINT("[PARSE] ✗ ID mismatch (got 0x%04X/0x%04X, expect 0x%04X/0x%04X) - Unknown device\n",
-            //            rcv_data_p->man_id, rcv_data_p->form_id,
-            //            MANUFACTURER_ID, LOSS_TEST_FORM_ID);
+            test_form_id_mismatch_count++;
+            if (log_this && (test_form_id_mismatch_count <= 5 || (test_form_id_mismatch_count % 200U) == 0U)) {
+                SCAN_LOG("[PARSE][DROP] ID mismatch got=0x%04X/0x%04X expect=0x%04X/0x%04X\n",
+                         rcv_data_p->man_id,
+                         rcv_data_p->form_id,
+                         MANUFACTURER_ID,
+                         LOSS_TEST_FORM_ID);
+            }
             dev_chr_p->step_fail = 1;
         }
     } else {
@@ -3943,14 +4073,15 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
  *     }
  *     return true;  // Continue parsing
  * }
- * 
- * uint8_t ad_buffer[] = { 0x02, 0x01, 0x06, 0x05, 0xFF, 0xFF, 0xFF, 0x00, 0x00 };
+ *
  * sl_bt_data_parse(ad_buffer, sizeof(ad_buffer), my_parser, NULL);
  */
 static int sl_bt_data_parse(const uint8_t *ad_data, uint16_t ad_len,
                            bool (*callback)(adv_data_t *data, void *user_data),
                            void *user_data)
 {
+    static uint32_t tlv_error_count = 0;
+
     if (ad_data == NULL || callback == NULL) {
         return -EINVAL;
     }
@@ -3971,6 +4102,11 @@ static int sl_bt_data_parse(const uint8_t *ad_data, uint16_t ad_len,
         /* Check if we have enough data */
         if (offset + 1 + length > ad_len) {
             /* Invalid data - length field exceeds buffer */
+            tlv_error_count++;
+            if (tlv_error_count <= 5 || (tlv_error_count % 100U) == 0U) {
+                SCAN_LOG("[PARSE][ERR] bad TLV offset=%u len=%u ad_len=%u\n",
+                         offset, length, ad_len);
+            }
             return -EBADMSG;
         }
         
@@ -4037,6 +4173,9 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
 {
     int8_t idx = -1;
     int8_t rssi = adv_info->rssi;
+    bool log_this = scan_log_addr_match(&adv_info->address);
+    static uint32_t unknown_phy_count = 0;
+    static uint32_t parse_miss_count = 0;
     
     /* Determine PHY index from primary and secondary PHY */
     if (1 == adv_info->prim_phy && 2 == adv_info->sec_phy) {
@@ -4048,6 +4187,11 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
     } else if (1 == adv_info->prim_phy && 0 == adv_info->sec_phy) {
         idx = 3;  /* BLE4 (legacy advertising) */
     } else {
+        unknown_phy_count++;
+        if (log_this && (unknown_phy_count <= 5 || (unknown_phy_count % 100U) == 0U)) {
+            SCAN_LOG("[SCAN][DROP] unknown phy prim=%u sec=%u rssi=%d len=%u\n",
+                     adv_info->prim_phy, adv_info->sec_phy, rssi, ad_len);
+        }
         return;  /* Unknown PHY combination */
     }
     
@@ -4094,6 +4238,14 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
             return;  /* Successfully parsed as burst test packet */
         }
     }
+
+    parse_miss_count++;
+    if (log_this && (parse_miss_count <= 5 || (parse_miss_count % 200U) == 0U)) {
+        SCAN_LOG("[SCAN][MISS] idx=%d rssi=%d len=%u trig(snd=%d scn=%d num=%d env=%d)\n",
+             idx, rssi, ad_len,
+             sender_task_tgr(0), scanner_task_tgr(0),
+             numcst_task_tgr(0), envmon_task_tgr(0));
+    }
     
     /* Try remote control parser (only for 1M PHY) */
     /* TODO: Implement remote_ctrl_parser if needed
@@ -4117,6 +4269,9 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
 static void device_found_legacy(const bd_addr *addr, int8_t rssi,
                                const uint8_t *ad_data, uint16_t ad_len)
 {
+    static uint32_t legacy_found_count = 0;
+    bool log_this = scan_log_addr_match(addr);
+
     /* Create advertising info structure for legacy advertising (BLE4) */
     sl_adv_info_t adv_info = {
         .rssi = rssi,
@@ -4126,6 +4281,16 @@ static void device_found_legacy(const bd_addr *addr, int8_t rssi,
         .address_type = 0,
         .address = *addr
     };
+
+    legacy_found_count++;
+    if (log_this && (legacy_found_count <= 5 || (legacy_found_count % 200U) == 0U)) {
+        SCAN_LOG("[SCAN][LEGACY] cnt=%lu len=%u rssi=%d addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+             (unsigned long)legacy_found_count,
+             ad_len,
+             rssi,
+             addr->addr[5], addr->addr[4], addr->addr[3],
+             addr->addr[2], addr->addr[1], addr->addr[0]);
+    }
     
     /* Call unified device_found function */
     device_found(&adv_info, ad_data, ad_len);
@@ -4146,6 +4311,9 @@ static void device_found_extended(const bd_addr *addr, int8_t rssi, int8_t tx_po
                                  uint8_t prim_phy, uint8_t sec_phy,
                                  const uint8_t *ad_data, uint16_t ad_len)
 {
+    static uint32_t extended_found_count = 0;
+    bool log_this = scan_log_addr_match(addr);
+
     /* Create advertising info structure for extended advertising */
     sl_adv_info_t adv_info = {
         .rssi = rssi,
@@ -4155,6 +4323,19 @@ static void device_found_extended(const bd_addr *addr, int8_t rssi, int8_t tx_po
         .address_type = 0,
         .address = *addr
     };
+
+    extended_found_count++;
+    if (log_this && (extended_found_count <= 5 || (extended_found_count % 100U) == 0U)) {
+        SCAN_LOG("[SCAN][EXT] cnt=%lu len=%u rssi=%d txpwr=%d phy=%u/%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+             (unsigned long)extended_found_count,
+             ad_len,
+             rssi,
+             tx_power,
+             prim_phy,
+             sec_phy,
+             addr->addr[5], addr->addr[4], addr->addr[3],
+             addr->addr[2], addr->addr[1], addr->addr[0]);
+    }
     
     /* Call unified device_found function */
     device_found(&adv_info, ad_data, ad_len);
