@@ -61,6 +61,13 @@
 #define SCAN_LOG_TARGET_FILTER 1
 #endif
 
+/* [PARSE] log mode:
+ *   0 = print every received valid test packet (verbose, may overflow log buffer)
+ *   1 = print only lost packets — gaps in pre_cnt sequence (quiet, accurate) */
+#ifndef PARSE_LOG_LOSS_ONLY
+#define PARSE_LOG_LOSS_ONLY 0
+#endif
+
 #define SCAN_LOG_TARGET_ADDR_5 0xC3
 #define SCAN_LOG_TARGET_ADDR_4 0xD7
 #define SCAN_LOG_TARGET_ADDR_3 0x89
@@ -518,22 +525,23 @@ static char peek_msg_str[4][64];
 /* Platform-specific advertising handles */
 static adv_handle_t ext_adv[MAX_ADV_SETS];
 
-/* PHY type string mappings */
+/* PHY type string mappings.  Silicon Labs reports SL_BT_GAP_PHY_CODED (0x4)
+ * for Coded PHY, NOT the BT-HCI value 0x03 used by Nordic. */
 static const char *pri_phy_typ[] = {
     "NA",  /* 0x00 */
-    "1M",  /* 0x01 */
-    "NA",  /* 0x02 */
-    "S8",  /* 0x03 Coded PHY S=8 */
-    "S2",  /* 0x04 Coded PHY S=2 */
+    "1M",  /* 0x01 sl_bt_gap_phy_1m */
+    "NA",  /* 0x02 sl_bt_gap_phy_2m (not valid as primary) */
+    "NA",  /* 0x03 unused on Si Labs */
+    "S8",  /* 0x04 sl_bt_gap_phy_coded (SL_BT_GAP_PHY_CODED) */
     "NA"   /* 0x05 */
 };
 
 static const char *sec_phy_typ[] = {
     "NA",  /* 0x00 */
-    "1M",  /* 0x01 */
-    "2M",  /* 0x02 */
-    "S8",  /* 0x03 Coded PHY S=8 */
-    "S2",  /* 0x04 Coded PHY S=2 */
+    "1M",  /* 0x01 sl_bt_gap_phy_1m */
+    "2M",  /* 0x02 sl_bt_gap_phy_2m */
+    "NA",  /* 0x03 unused on Si Labs */
+    "S8",  /* 0x04 sl_bt_gap_phy_coded (SL_BT_GAP_PHY_CODED) */
     "NA"   /* 0x05 */
 };
 
@@ -592,7 +600,7 @@ static int8_t env_rssi[4][3];
 typedef struct {
     int8_t rssi;            /* RSSI value in dBm */
     int8_t tx_power;        /* TX power in dBm */
-    uint8_t prim_phy;       /* Primary PHY: 1=1M, 3=Coded */
+    uint8_t prim_phy;       /* Primary PHY: 1=1M, 4=Coded (SL_BT_GAP_PHY_CODED) */
     uint8_t sec_phy;        /* Secondary PHY: 0=none(legacy), 1=1M, 2=2M, 3=Coded */
     uint8_t address_type;   /* Address type */
     bd_addr address;        /* Bluetooth device address */
@@ -1674,7 +1682,7 @@ void sender_peek_msg(void)
     /* Generate message for Coded PHY (index 2) */
     snprintf(peek_msg_str[2], sizeof(peek_msg_str[2]), peek_sndpkt_form,
             device_address[0],
-            pri_phy_typ[3], sec_phy_typ[3],  /* S8/S8 */
+            pri_phy_typ[SL_BT_GAP_PHY_CODED], sec_phy_typ[SL_BT_GAP_PHY_CODED],  /* S8/S8 */
             sub_total_snd_s8,
             (round_phy_sel[2]) ? round_total_num : 0,
             round_tx_pwr);
@@ -2004,8 +2012,15 @@ int scanner_setup(const test_param_t *param)
         }
     }
     
-    /* Start passive scanning */
-    err = passive_scan_control(0);
+    /* Start passive scanning using the same PHY-aware method as losstst_scanner()
+     * so the very first scan already uses Coded-only when only S8 is selected.
+     * This prevents a scanner stop+restart when the first pre-ann is detected. */
+    {
+        int8_t init_scan_method =
+            (round_phy_sel[2] && (round_phy_sel[3] || round_phy_sel[1] || round_phy_sel[0]))
+            ? 0 : (round_phy_sel[2] ? 2 : 1);
+        err = passive_scan_control(init_scan_method);
+    }
     if (err) {
         DEBUG_PRINT("scanner_setup: Scan start failed: %d\n", err);
         return err;
@@ -2541,6 +2556,15 @@ void blocking_adv(uint8_t index)
         return;
     }
     
+    /* Skip the BGAPI call if the advertiser is not running - avoids a
+     * synchronous HCI round-trip to the BLE controller for no reason.
+     * This is especially important in pure-scanner mode where NO slot is
+     * ever started: the controller may be busy processing Coded PHY RX
+     * and a queued command can block for tens of milliseconds per slot. */
+    if (!ext_adv_status[index].start) {
+        return;
+    }
+
     /* Stop advertising immediately */
     int err = platform_stop_adv(ext_adv[index]);
     
@@ -2925,7 +2949,7 @@ int losstst_sender(void)
         if (lc_phy_sel[2] && sub_total_snd_s8 >= round_total_num) {
             DEBUG_PRINT("SND:%u P:%s/%s Complete\n",
                        (uint8_t)device_address[0],
-                       pri_phy_typ[3], sec_phy_typ[3]);
+                       pri_phy_typ[SL_BT_GAP_PHY_CODED], sec_phy_typ[SL_BT_GAP_PHY_CODED]);
             
             device_info_form[2].pre_cnt = INT16_MAX;
             update_adv(2, NULL, ratio_test_data_set[2], p_adv_default_start_param);
@@ -3015,8 +3039,14 @@ int losstst_scanner(void)
         hrtbt_stamp = 0;
     }
     
-    /* Start passive scanning */
-    passive_scan_control((2 == round_scan_method /*&& rc_party*/) ? 0 : round_scan_method);
+    /* Start passive scanning.
+     * For S8-only mode (round_scan_method==2) start with Coded PHY scanning
+     * immediately.  If we started with method=0 (1M+Coded) and then switched
+     * to method=2 on pre-ann detection, sl_bt_scanner would stop+restart,
+     * causing a 3-HCI-round-trip gap (~136 missed packets at 300-450ms).
+     * For mixed-PHY mode method=0 is still needed here to catch pre-anns on
+     * any PHY, so only S8-only gets the direct method=2 start. */
+    passive_scan_control(round_scan_method);
     
     /* Calculate expected period */
     period_msec = LOSS_TEST_BURST_COUNT * value_interval[round_adv_param_index][1];
@@ -3036,10 +3066,32 @@ int losstst_scanner(void)
         hrtbt += elapsed;
         hrtbt_stamp = current_time;  /* Update timestamp for next iteration */
         
-        /* Check timeout conditions */
-        if (((NULL != scanner_abort_p) && (true == (abort = ((bool (*)(void))scanner_abort_p)())))
-            || ((round_scan_method ? 30000 : 10000) < hrtbt)
-            || (period_msec * (first_round ? 5 : 1) < hrtbt)) {
+        /* Check timeout conditions.
+         * Only use the period_msec-based limit (x5 on the very first round
+         * to give extra margin while waiting for the first pre-announcement).
+         * The old fixed 30s/10s hard limit was too short for slow PHYs like
+         * Coded S8 at 300-450ms interval x 250 packets ~= 75-112 seconds.
+         *
+         * "burst_active" = any selected PHY has already received burst data
+         * (flow > 0) but is not yet complete.  While a multi-burst test is
+         * in progress the inter-burst gap can be as long as the full burst
+         * duration again, so we suspend the hrtbt limit entirely and let
+         * scanner_abort() be the only way out. */
+        bool burst_active = false;
+        for (int _i = 0; _i < 4; _i++) {
+            if (round_phy_sel[_i] && rec_sets[_i].flow > 0 && !rec_sets[_i].complete) {
+                burst_active = true;
+                break;
+            }
+        }
+        /* Do not timeout if all selected PHYs have already sent the INT16_MAX
+         * completion marker — the completion path below will handle the exit. */
+        bool _tout_all_done = (!round_phy_sel[0] || INT16_MAX == precnt_rcv[0])
+                           && (!round_phy_sel[1] || INT16_MAX == precnt_rcv[1])
+                           && (!round_phy_sel[2] || INT16_MAX == precnt_rcv[2])
+                           && (!round_phy_sel[3] || INT16_MAX == precnt_rcv[3]);
+        if (((NULL != scanner_abort_p) && (true == (abort = ((bool (*)(void))scanner_abort_p()))))
+            || (!_tout_all_done && !burst_active && period_msec * (first_round ? 5 : 1) < hrtbt)) {
             print_int64("Scanner: Timeout - hrtbt=", hrtbt);
             print_int64(", period=", period_msec);
             DEBUG_PRINT("\n");
@@ -3123,23 +3175,54 @@ int losstst_scanner(void)
     }
     
     if (0 == next_scan_method) {
+        /* Before returning, check if all selected PHYs have received the
+         * complete flag (precnt_rcv[i] == INT16_MAX set by event handler). */
+        bool _any_sel = round_phy_sel[0] || round_phy_sel[1]
+                     || round_phy_sel[2] || round_phy_sel[3];
+        bool _all_done = (!round_phy_sel[0] || INT16_MAX == precnt_rcv[0])
+                      && (!round_phy_sel[1] || INT16_MAX == precnt_rcv[1])
+                      && (!round_phy_sel[2] || INT16_MAX == precnt_rcv[2])
+                      && (!round_phy_sel[3] || INT16_MAX == precnt_rcv[3]);
+        if (_any_sel && _all_done) {
+            if (0 == complete_mark) {
+                complete_mark = platform_uptime_get();
+                DEBUG_PRINT("Scanner: All PHYs COMPLETE, wait 10s\n");
+            } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
+                DEBUG_PRINT("Scanner: All PHYs COMPLETE, finishing\n");
+                passive_scan_control(-1);
+                hrtbt = hrtbt_stamp = 0;
+                return 0;
+            }
+        } else {
+            complete_elapse = complete_mark = 0;
+        }
         return retval;
     }
-    
+
     first_round = false;
-    
-    /* Check for completion timeout */
-    if (INT16_MAX == precnt_rcv[0] && INT16_MAX == precnt_rcv[1] && 
-        INT16_MAX == precnt_rcv[2] && INT16_MAX == precnt_rcv[3]) {
-        if (0 == complete_mark) {
-            complete_mark = platform_uptime_get();
-        } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
-            DEBUG_PRINT("RCV_Task completed\n");
-            passive_scan_control(-1);
-            return 0;
+
+    /* Completion check below is kept for cases where next_scan_method>0
+     * (redundant guard — primary path is the block above). */
+    {
+        bool _any_sel = round_phy_sel[0] || round_phy_sel[1]
+                     || round_phy_sel[2] || round_phy_sel[3];
+        bool _all_done = (!round_phy_sel[0] || INT16_MAX == precnt_rcv[0])
+                      && (!round_phy_sel[1] || INT16_MAX == precnt_rcv[1])
+                      && (!round_phy_sel[2] || INT16_MAX == precnt_rcv[2])
+                      && (!round_phy_sel[3] || INT16_MAX == precnt_rcv[3]);
+        if (_any_sel && _all_done) {
+            if (0 == complete_mark) {
+                complete_mark = platform_uptime_get();
+                DEBUG_PRINT("Scanner: All PHYs COMPLETE, wait 10s\n");
+            } else if (10000 < (complete_elapse += platform_uptime_get() - complete_mark)) {
+                DEBUG_PRINT("Scanner: All PHYs COMPLETE, finishing\n");
+                passive_scan_control(-1);
+                hrtbt = hrtbt_stamp = 0;
+                return 0;
+            }
+        } else {
+            complete_elapse = complete_mark = 0;
         }
-    } else {
-        complete_elapse = complete_mark = 0;
     }
     
     /* Stop peek message advertising if not in remote control mode */
@@ -3292,8 +3375,10 @@ int losstst_scanner(void)
         update_adv(4, NULL, NULL, p_adv_default_start_param);
     //}
     
-    /* Resume scanning */
-    passive_scan_control(((0 >= retval) || (2 == round_scan_method/* && rc_party*/)) ? 0 : round_scan_method);
+    /* Resume scanning. Keep the same method used during the burst so a
+     * stop+restart is not needed when the next pre-ann is detected.
+     * Only fall back to method=0 when returning 0/error (test done/abort). */
+    passive_scan_control((0 >= retval) ? 0 : round_scan_method);
     
     return retval;
 }
@@ -3642,8 +3727,8 @@ static bool numcast_parser(adv_data_t *data, void *user_data)
             idx = 0;  /* 2M PHY */
         } else if (1 == adv_info_p->prim_phy && 1 == adv_info_p->sec_phy) {
             idx = 1;  /* 1M PHY */
-        } else if (3 == adv_info_p->prim_phy && 3 == adv_info_p->sec_phy) {
-            idx = 2;  /* Coded PHY S=8 */
+        } else if (SL_BT_GAP_PHY_CODED == adv_info_p->prim_phy && SL_BT_GAP_PHY_CODED == adv_info_p->sec_phy) {
+            idx = 2;  /* Coded PHY S=8 (SL_BT_GAP_PHY_CODED=0x4) */
         } else if (1 == adv_info_p->prim_phy && 0 == adv_info_p->sec_phy) {
             idx = 3;  /* BLE4 (legacy advertising) */
         } else {
@@ -3779,8 +3864,8 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
         index = 0;  /* 2M PHY */
     } else if (1 == rcv_stamp_lc.rec.pri_phy && 1 == rcv_stamp_lc.rec.sec_phy) {
         index = 1;  /* 1M PHY */
-    } else if (3 == rcv_stamp_lc.rec.pri_phy && 3 == rcv_stamp_lc.rec.sec_phy) {
-        index = 2;  /* Coded PHY S=8 */
+    } else if (SL_BT_GAP_PHY_CODED == rcv_stamp_lc.rec.pri_phy && SL_BT_GAP_PHY_CODED == rcv_stamp_lc.rec.sec_phy) {
+        index = 2;  /* Coded PHY S=8 (SL_BT_GAP_PHY_CODED=0x4) */
     } else if (1 == rcv_stamp_lc.rec.pri_phy && 0 == rcv_stamp_lc.rec.sec_phy) {
         index = 3;  /* BLE4 (legacy advertising) */
     } else {
@@ -3861,6 +3946,9 @@ static void tst_form_packet_rcv(sl_adv_info_t *info_p, device_info_t *form_p)
                 /* Sender side completed */
                 rcv_stamp_lc.rec.complete = 1;
                 rec_sets[index] = rcv_stamp_lc.rec;
+                /* Set precnt_rcv to INT16_MAX so the outer loop can detect
+                 * completion via the PHY-selection-aware check. */
+                precnt_rcv[index] = INT16_MAX;
                 DEBUG_PRINT("Scanner: PHY[%d] COMPLETE flag set (pre_cnt=%d)\n", 
                            index, form_p->pre_cnt);
             } else if (0 == form_p->pre_cnt) {
@@ -4017,12 +4105,31 @@ static bool test_form_parser(adv_data_t *data, void *user_data)
             LOSS_TEST_FORM_ID == rcv_data_p->form_id) {
             sl_adv_info_t *adv_info_p = dev_chr_p->adv_info_p;
             
-            /* Only print if pre_cnt changed from last time */
+            /* [PARSE] logging — two modes controlled by PARSE_LOG_LOSS_ONLY.
+             * Use DEBUG_PRINT (not SCAN_LOG): payload already validated as
+             * man_id=0xFFFF/form_id=0xBAAB, no address filter needed. */
             static int16_t last_pre_cnt = INT16_MIN;
-            if (log_this && rcv_data_p->pre_cnt != last_pre_cnt) {
-                SCAN_LOG("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", rcv_data_p->pre_cnt);
-                last_pre_cnt = rcv_data_p->pre_cnt;
+            int16_t cur_pre_cnt = rcv_data_p->pre_cnt;
+#if PARSE_LOG_LOSS_ONLY
+            /* Loss-only mode: print when a gap is detected.
+             * pre_cnt counts down, so expected next = last_pre_cnt - 1.
+             * Gaps at burst boundaries (pre_cnt wraps to 249 or goes to 0/-3)
+             * are ignored; only mid-burst drops are reported. */
+            if (last_pre_cnt != INT16_MIN
+                && cur_pre_cnt > 0 && cur_pre_cnt < INT16_MAX
+                && last_pre_cnt > 0 && last_pre_cnt < INT16_MAX
+                && cur_pre_cnt != last_pre_cnt - 1) {
+                DEBUG_PRINT("[PARSE][LOSS] gap: expected=%d got=%d (lost %d)\n",
+                            last_pre_cnt - 1, cur_pre_cnt,
+                            last_pre_cnt - 1 - cur_pre_cnt);
             }
+#else
+            /* Verbose mode: print every unique pre_cnt */
+            if (cur_pre_cnt != last_pre_cnt) {
+                DEBUG_PRINT("[PARSE] ✓ Valid test packet! pre_cnt=%d\n", cur_pre_cnt);
+            }
+#endif
+            last_pre_cnt = cur_pre_cnt;
             
             tst_form_packet_rcv(adv_info_p, rcv_data_p);
             dev_chr_p->step_success = 1;
@@ -4182,8 +4289,8 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
         idx = 0;  /* 2M PHY */
     } else if (1 == adv_info->prim_phy && 1 == adv_info->sec_phy) {
         idx = 1;  /* 1M PHY */
-    } else if (3 == adv_info->prim_phy && 3 == adv_info->sec_phy) {
-        idx = 2;  /* Coded PHY S=8 */
+    } else if (SL_BT_GAP_PHY_CODED == adv_info->prim_phy && SL_BT_GAP_PHY_CODED == adv_info->sec_phy) {
+        idx = 2;  /* Coded PHY S=8 (SL_BT_GAP_PHY_CODED=0x4) */
     } else if (1 == adv_info->prim_phy && 0 == adv_info->sec_phy) {
         idx = 3;  /* BLE4 (legacy advertising) */
     } else {
