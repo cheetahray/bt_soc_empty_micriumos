@@ -554,6 +554,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         bool log_this = scan_log_addr_match(&scan_evt->address);
 
         legacy_scan_evt_count++;
+        /* Address-filtered detail log */
         if (log_this && (legacy_scan_evt_count <= 5 || (legacy_scan_evt_count % 200U) == 0U)) {
             SCAN_LOG("[SCAN_EVT][LEGACY] evt=0x%08lX cnt=%lu len=%u rssi=%d addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
                      (unsigned long)evt_id,
@@ -563,6 +564,16 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
                      scan_evt->address.addr[5], scan_evt->address.addr[4],
                      scan_evt->address.addr[3], scan_evt->address.addr[2],
                      scan_evt->address.addr[1], scan_evt->address.addr[0]);
+        }
+        /* Address-filter-free periodic heartbeat — confirms legacy RX is alive */
+        if (legacy_scan_evt_count <= 3 || (legacy_scan_evt_count % 500U) == 0U) {
+            DEBUG_PRINT("[SCAN_EVT][LEGACY] total=%lu rssi=%d len=%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                        (unsigned long)legacy_scan_evt_count,
+                        scan_evt->rssi,
+                        scan_evt->data.len,
+                        scan_evt->address.addr[5], scan_evt->address.addr[4],
+                        scan_evt->address.addr[3], scan_evt->address.addr[2],
+                        scan_evt->address.addr[1], scan_evt->address.addr[0]);
         }
         
         sl_bt_scanner_process_legacy_report(

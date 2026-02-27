@@ -4390,8 +4390,19 @@ static void device_found_legacy(const bd_addr *addr, int8_t rssi,
     };
 
     legacy_found_count++;
+    /* Address-filtered detail log */
     if (log_this && (legacy_found_count <= 5 || (legacy_found_count % 200U) == 0U)) {
         SCAN_LOG("[SCAN][LEGACY] cnt=%lu len=%u rssi=%d addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+             (unsigned long)legacy_found_count,
+             ad_len,
+             rssi,
+             addr->addr[5], addr->addr[4], addr->addr[3],
+             addr->addr[2], addr->addr[1], addr->addr[0]);
+    }
+    /* Address-filter-free: always log the first few, then every 200.
+     * BLE4 legacy ADV has no TX power in the event — shown as txpwr=N/A. */
+    if (legacy_found_count <= 3 || (legacy_found_count % 200U) == 0U) {
+        DEBUG_PRINT("[SCAN][LEGACY] cnt=%lu len=%u rssi=%d txpwr=N/A addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
              (unsigned long)legacy_found_count,
              ad_len,
              rssi,
