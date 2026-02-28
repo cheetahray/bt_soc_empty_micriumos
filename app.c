@@ -565,8 +565,9 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
                      scan_evt->address.addr[3], scan_evt->address.addr[2],
                      scan_evt->address.addr[1], scan_evt->address.addr[0]);
         }
-        /* Address-filter-free periodic heartbeat — confirms legacy RX is alive */
-        if (legacy_scan_evt_count <= 3 || (legacy_scan_evt_count % 500U) == 0U) {
+        /* Heartbeat: only for our test packets (man=0xFFFF form=0xBAAB) */
+        bool is_test_pkt = losstst_check_form_id(scan_evt->data.data, scan_evt->data.len);
+        if (is_test_pkt && (legacy_scan_evt_count <= 3 || (legacy_scan_evt_count % 500U) == 0U)) {
             DEBUG_PRINT("[SCAN_EVT][LEGACY] total=%lu rssi=%d len=%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
                         (unsigned long)legacy_scan_evt_count,
                         scan_evt->rssi,
@@ -590,7 +591,8 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         bool log_this = scan_log_addr_match(&scan_evt->address);
 
         ext_scan_evt_count++;
-        if (log_this && (ext_scan_evt_count <= 5 || (ext_scan_evt_count % 100U) == 0U)) {
+        bool ext_is_test_pkt = losstst_check_form_id(scan_evt->data.data, scan_evt->data.len);
+        if (ext_is_test_pkt && (ext_scan_evt_count <= 5 || (ext_scan_evt_count % 100U) == 0U)) {
             SCAN_LOG("[SCAN_EVT][EXT] evt=0x%08lX cnt=%lu len=%u rssi=%d txpwr=%d phy=%u/%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
                      (unsigned long)evt_id,
                      (unsigned long)ext_scan_evt_count,

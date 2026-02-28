@@ -459,6 +459,7 @@ static const adv_start_param_t p_adv_finit_start_param[]=BT_LE_EXT_ADV_START_PAR
 static const adv_start_param_t p_adv_1sec_start_param[]=BT_LE_EXT_ADV_START_PARAM(100,0);
 static const adv_start_param_t p_adv_5sec_start_param[]=BT_LE_EXT_ADV_START_PARAM(500,0);
 static const adv_start_param_t p_adv_burst_start_param[]=BT_LE_EXT_ADV_START_PARAM(0,LOSS_TEST_BURST_COUNT);
+static const adv_start_param_t p_adv_1event_start_param[]=BT_LE_EXT_ADV_START_PARAM(0,1);
 
 const int8_t sender_tgr=1;
 const int8_t scanner_tgr=2;
@@ -583,6 +584,10 @@ uint64_t number_cast_val;       /**< Number cast value */
 uint64_t number_cast_rxval;     /**< Number cast received value */
 bool number_cast_auto;          /**< Number cast auto mode flag */
 static int16_t precnt_rcv[4];
+/* Burst-chaining state: one advertising event at a time so each event carries
+ * a unique, decrementing pre_cnt value — required by the receiver's loss count. */
+static int16_t burst_remaining[4] = {0, 0, 0, 0};
+static bool    burst_active[4]    = {false, false, false, false};
 static rssi_stamp_t env_rssi_rec[4][256];
 
 typedef bool (*envmon_task_abort)(void);
@@ -1061,11 +1066,16 @@ static int platform_create_adv_set(const adv_param_t *param,
                     duration_10ms = 0xFFFF;
                 }
                 
-                DEBUG_PRINT("  [ADV %d] num_events=%u, interval=%lu ms, duration=%lu ms (0x%04lX * 10ms)\n",
-                           handle, param->num_events, 
-                           (unsigned long)max_interval_ms,
-                           (unsigned long)(duration_10ms * 10),
-                           (unsigned long)duration_10ms);
+                /* During burst chaining print only on first event and every 50 events */
+                if (handle >= 4 || !burst_active[handle]
+                    || burst_remaining[handle] == LOSS_TEST_BURST_COUNT - 1
+                    || burst_remaining[handle] % 50 == 0) {
+                    DEBUG_PRINT("  [ADV %d] num_events=%u, interval=%lu ms, duration=%lu ms (0x%04lX * 10ms)\n",
+                               handle, param->num_events,
+                               (unsigned long)max_interval_ms,
+                               (unsigned long)(duration_10ms * 10),
+                               (unsigned long)duration_10ms);
+                }
                 
                 /* Set advertiser timing with duration */
                 status = sl_bt_advertiser_set_timing(
@@ -2522,6 +2532,48 @@ void losstst_adv_sent_handler(adv_handle_t adv_handle)
     /* Mark advertising as stopped */
     ext_adv_status[index].stop = 1;
     
+    /* Burst chaining: fire one event at a time so every advertising event
+     * carries a unique, decrementing pre_cnt value.  The receiver uses
+     * pre_cnt to count received packets; repeated values would be
+     * double-counted (or silently deduplicated) on the Nordic side. */
+    if (index < 4 && burst_active[index]) {
+        if (sndr_abort_flag[index]) {
+            /* Abort requested — stop chaining; fall through to abort handler */
+            burst_active[index] = false;
+            burst_remaining[index] = 0;
+        } else {
+            burst_remaining[index]--;
+            device_info_form[index].pre_cnt = (int16_t)burst_remaining[index];
+            if (index == 3) {
+                device_info_bt4_form.device_info = device_info_form[3];
+            }
+            if (burst_remaining[index] > 0) {
+                /* Print on first event and every 50 events after */
+                if (burst_remaining[index] == LOSS_TEST_BURST_COUNT - 1
+                    || burst_remaining[index] % 50 == 0) {
+                    DEBUG_PRINT("[SND] adv_sent idx=%u sndr_abort=%d pre_cnt=%d\n",
+                               index, (int)sndr_abort_flag[index],
+                               device_info_form[index].pre_cnt);
+                }
+                /* Restart for the next burst event with updated pre_cnt */
+                update_adv(index, NULL, ratio_test_data_set[index], p_adv_1event_start_param);
+                return;  /* update_adv cleared stop=0; sender wait loop continues */
+            } else {
+                /* All events fired; pre_cnt==0 signals burst end to receiver.
+                 * stop=1 already set above — sender task moves to post-burst. */
+                burst_active[index] = false;
+                DEBUG_PRINT("[SND] PHY[%u] burst complete (%u events sent)\n",
+                            index, LOSS_TEST_BURST_COUNT);
+                return;
+            }
+        }
+    }
+
+    if (index < 4) {
+        DEBUG_PRINT("[SND] adv_sent idx=%u sndr_abort=%d pre_cnt=%d\n",
+                   index, (int)sndr_abort_flag[index], device_info_form[index].pre_cnt);
+    }
+
     /* Handle sender abort flag for PHY test sets (index 0-3) */
     if (index < ARRAY_SIZE(sndr_abort_flag) && sndr_abort_flag[index]) {
         sndr_abort_flag[index] = false;
@@ -2650,6 +2702,11 @@ int losstst_sender(void)
         lc_phy_sel[2] = round_phy_sel[2];
     }
     
+    DEBUG_PRINT("[SND] PHY sel: 2M=%d 1M=%d S8=%d BLE4=%d | snt: 2M=%u 1M=%u S8=%u BLE4=%u / total=%u\n",
+               lc_phy_sel[0], lc_phy_sel[1], lc_phy_sel[2], lc_phy_sel[3],
+               sub_total_snd_2m, sub_total_snd_1m, sub_total_snd_s8, sub_total_snd_ble4,
+               round_total_num);
+    
     /* Check if any PHY needs more transmissions */
     if ((lc_phy_sel[0] && sub_total_snd_2m < round_total_num)
         || (lc_phy_sel[1] && sub_total_snd_1m < round_total_num)
@@ -2673,6 +2730,7 @@ int losstst_sender(void)
         
         /* Countdown loop */
         do {
+            DEBUG_PRINT("[SND] Countdown: %d\n", lc_pre_cnt);
             /* Start advertising with countdown value */
             for (int idx = 0; idx <= 3; idx++) {
                 if (lc_phy_sel[idx]) {
@@ -2736,10 +2794,14 @@ int losstst_sender(void)
         period_msec = LOSS_TEST_BURST_COUNT * value_interval[round_adv_param_index][1];
         int32_t period_sec = 1 + period_msec / 1000;
         
-        /* Initialize burst progress counter */
+        /* Initialize burst progress counter — unique pre_cnt per advertising event.
+         * pre_cnt starts at LOSS_TEST_BURST_COUNT and decrements by 1 each event
+         * so the receiver can detect every lost packet individually. */
         for (int idx = 0; idx <= 3; idx++) {
             if (lc_phy_sel[idx]) {
-                device_info_form[idx].pre_cnt = period_sec;
+                device_info_form[idx].pre_cnt = LOSS_TEST_BURST_COUNT;
+                burst_remaining[idx] = LOSS_TEST_BURST_COUNT;
+                burst_active[idx] = true;
             }
             if (idx == 3) {
                 device_info_bt4_form.device_info = device_info_form[3];
@@ -2778,8 +2840,8 @@ int losstst_sender(void)
                 if (idx == 3) {
                     device_info_bt4_form.device_info = device_info_form[3];
                 }
-                DEBUG_PRINT("PHY[%d]: Starting burst with %d events\n", idx, LOSS_TEST_BURST_COUNT);
-                update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_burst_start_param);
+                DEBUG_PRINT("PHY[%d]: Starting burst with %d events (1-event chain)\n", idx, LOSS_TEST_BURST_COUNT);
+                update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_1event_start_param);
                 snd_state_val[idx] = 2;
             }
         }
@@ -2805,20 +2867,17 @@ int losstst_sender(void)
                 }
             }
             
-            /* Update countdown every second */
+            /* Periodic debug log (pre_cnt is updated per-event in the adv_sent callback;
+             * do NOT overwrite it here or the same value would span multiple events). */
             if (period_msec >= pitch_msec) {
                 pitch_msec += 1000;
                 period_sec--;
-                
-                for (int idx = 0; idx <= 3; idx++) {
-                    if (lc_phy_sel[idx]) {
-                        device_info_form[idx].pre_cnt = period_sec;
-                        if (idx == 3) {
-                            device_info_bt4_form.device_info = device_info_form[3];
-                        }
-                        update_adv(idx, NULL, ratio_test_data_set[idx], NULL);
-                    }
-                }
+                DEBUG_PRINT("[SND] Burst running: ~%lds left | stop: 2M=%s 1M=%s S8=%s BLE4=%s\n",
+                           (long)period_sec,
+                           lc_phy_sel[0] ? (ext_adv_status[0].stop ? "1" : "0") : "-",
+                           lc_phy_sel[1] ? (ext_adv_status[1].stop ? "1" : "0") : "-",
+                           lc_phy_sel[2] ? (ext_adv_status[2].stop ? "1" : "0") : "-",
+                           lc_phy_sel[3] ? (ext_adv_status[3].stop ? "1" : "0") : "-");
             }
         }
         
@@ -4347,7 +4406,10 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
     }
 
     parse_miss_count++;
-    if (log_this && (parse_miss_count <= 5 || (parse_miss_count % 200U) == 0U)) {
+    /* Only log MISS when at least one task is active; idle MISS is noise */
+    bool any_task = (0 != sender_task_tgr(0) || 0 != scanner_task_tgr(0)
+                    || 0 != numcst_task_tgr(0) || 0 != envmon_task_tgr(0));
+    if (any_task && log_this && (parse_miss_count <= 5 || (parse_miss_count % 200U) == 0U)) {
         SCAN_LOG("[SCAN][MISS] idx=%d rssi=%d len=%u trig(snd=%d scn=%d num=%d env=%d)\n",
              idx, rssi, ad_len,
              sender_task_tgr(0), scanner_task_tgr(0),
@@ -4373,6 +4435,37 @@ static void device_found(sl_adv_info_t *adv_info, const uint8_t *ad_data, uint16
  * @param ad_data Advertising data buffer
  * @param ad_len Advertising data length
  */
+/**
+ * @brief Check if ad_data contains our test packet (MANUFACTURER_ID + LOSS_TEST_FORM_ID).
+ * Iterates the AD structures looking for type=0xFF with matching company/form IDs.
+ */
+bool losstst_check_form_id(const uint8_t *ad_data, uint16_t ad_len)
+{
+    if (!ad_data || ad_len < 6) {
+        return false;
+    }
+    uint16_t pos = 0;
+    while (pos + 1 < ad_len) {
+        uint8_t flen  = ad_data[pos];
+        uint8_t ftype = ad_data[pos + 1];
+        if (flen == 0 || pos + 1 + flen > ad_len) {
+            break;
+        }
+        /* Manufacturer Specific Data: need at least 4 bytes of payload */
+        if (ftype == 0xFF && flen >= 5) {
+            uint16_t man_id  = (uint16_t)ad_data[pos + 2]
+                             | ((uint16_t)ad_data[pos + 3] << 8);
+            uint16_t form_id = (uint16_t)ad_data[pos + 4]
+                             | ((uint16_t)ad_data[pos + 5] << 8);
+            if (man_id == MANUFACTURER_ID && form_id == LOSS_TEST_FORM_ID) {
+                return true;
+            }
+        }
+        pos += 1 + flen;
+    }
+    return false;
+}
+
 static void device_found_legacy(const bd_addr *addr, int8_t rssi,
                                const uint8_t *ad_data, uint16_t ad_len)
 {
@@ -4390,8 +4483,9 @@ static void device_found_legacy(const bd_addr *addr, int8_t rssi,
     };
 
     legacy_found_count++;
-    /* Address-filtered detail log */
-    if (log_this && (legacy_found_count <= 5 || (legacy_found_count % 200U) == 0U)) {
+    bool is_test_pkt = losstst_check_form_id(ad_data, ad_len);
+    /* Address-filtered detail log (kept for SCAN_LOG sessions) */
+    if (log_this && is_test_pkt && (legacy_found_count <= 5 || (legacy_found_count % 200U) == 0U)) {
         SCAN_LOG("[SCAN][LEGACY] cnt=%lu len=%u rssi=%d addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
              (unsigned long)legacy_found_count,
              ad_len,
@@ -4399,9 +4493,8 @@ static void device_found_legacy(const bd_addr *addr, int8_t rssi,
              addr->addr[5], addr->addr[4], addr->addr[3],
              addr->addr[2], addr->addr[1], addr->addr[0]);
     }
-    /* Address-filter-free: always log the first few, then every 200.
-     * BLE4 legacy ADV has no TX power in the event — shown as txpwr=N/A. */
-    if (legacy_found_count <= 3 || (legacy_found_count % 200U) == 0U) {
+    /* Only log legacy packets that match our test ID (man=0xFFFF form=0xBAAB) */
+    if (is_test_pkt && (legacy_found_count <= 3 || (legacy_found_count % 200U) == 0U)) {
         DEBUG_PRINT("[SCAN][LEGACY] cnt=%lu len=%u rssi=%d txpwr=N/A addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
              (unsigned long)legacy_found_count,
              ad_len,
@@ -4443,7 +4536,8 @@ static void device_found_extended(const bd_addr *addr, int8_t rssi, int8_t tx_po
     };
 
     extended_found_count++;
-    if (log_this && (extended_found_count <= 5 || (extended_found_count % 100U) == 0U)) {
+    bool is_test_pkt = losstst_check_form_id(ad_data, ad_len);
+    if (is_test_pkt && (extended_found_count <= 5 || (extended_found_count % 100U) == 0U)) {
         SCAN_LOG("[SCAN][EXT] cnt=%lu len=%u rssi=%d txpwr=%d phy=%u/%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
              (unsigned long)extended_found_count,
              ad_len,

@@ -95,6 +95,17 @@ typedef struct {
  */
 int losstst_init(void);
 
+/**
+ * @brief Quick check if an AD payload contains MANUFACTURER_ID + LOSS_TEST_FORM_ID.
+ *
+ * Used to filter heartbeat logs so only our own test packets are printed.
+ *
+ * @param ad_data Pointer to raw advertising data
+ * @param ad_len  Length of advertising data
+ * @return true if a matching manufacturer-specific record is found
+ */
+bool losstst_check_form_id(const uint8_t *ad_data, uint16_t ad_len);
+
 /* ================== Advertising Control Functions ================== */
 
 /**
