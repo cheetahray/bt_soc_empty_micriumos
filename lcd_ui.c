@@ -1073,12 +1073,19 @@ void lcd_ui_expand_selection(void)
                 }
             }
             
-            // Return to main menu and redraw with updated values
-            menu_mode = LCD_MODE_MAIN_MENU;
-            sub_scroll_offset = 0;  // Reset sub-menu scroll
-            
-            if (cached_param != NULL) {
-                lcd_ui_show_startup(cached_param);
+            // Multi-select items (PHY, Channel) stay in sub-menu after selection
+            bool is_multi_select = (current_selection == 3 || current_selection == 4);
+            if (is_multi_select) {
+                // Stay in sub-menu and redraw to reflect updated toggle states
+                draw_sub_menu();
+            } else {
+                // Single-select: return to main menu and redraw with updated values
+                menu_mode = LCD_MODE_MAIN_MENU;
+                sub_scroll_offset = 0;  // Reset sub-menu scroll
+                
+                if (cached_param != NULL) {
+                    lcd_ui_show_startup(cached_param);
+                }
             }
         }
     }
