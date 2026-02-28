@@ -925,9 +925,10 @@ static int platform_create_adv_set(const adv_param_t *param,
             // Get PHY settings from options
             get_phy_from_options(param->options, &primary_phy, &secondary_phy);
             
-            // DEBUG_PRINT("Setting PHY: handle=%d, pri=%d, sec=%d\n", 
-            //            *handle, primary_phy, secondary_phy);
-            
+            DEBUG_PRINT("[ADV %d] Setting PHY: pri=%d(%s) sec=%d(%s)\n",
+                       *handle, primary_phy, pri_phy_typ[primary_phy],
+                       secondary_phy, sec_phy_typ[secondary_phy]);
+
             // Set PHY
             status = sl_bt_extended_advertiser_set_phy(*handle, 
                                                        primary_phy,
@@ -978,9 +979,10 @@ static int platform_create_adv_set(const adv_param_t *param,
         if (use_extended_adv) {
             get_phy_from_options(param->options, &primary_phy, &secondary_phy);
             
-            // DEBUG_PRINT("Updating PHY: handle=%d, pri=%d, sec=%d\n", 
-            //            handle, primary_phy, secondary_phy);
-            
+            DEBUG_PRINT("[ADV %d] Updating PHY: pri=%d(%s) sec=%d(%s)\n",
+                       handle, primary_phy, pri_phy_typ[primary_phy],
+                       secondary_phy, sec_phy_typ[secondary_phy]);
+
             status = sl_bt_extended_advertiser_set_phy(handle,
                                                        primary_phy,
                                                        secondary_phy);
@@ -999,11 +1001,10 @@ static int platform_create_adv_set(const adv_param_t *param,
     static int platform_set_adv_data(adv_handle_t handle,
                                      adv_data_t *data, uint8_t data_len)
     {
-        // Example Silicon Labs implementation:
         sl_status_t status;
         uint8_t adv_data[256];
         uint16_t offset = 0;
-        
+
         // Build advertising data packet
         for (uint8_t i = 0; i < data_len; i++) {
             adv_data[offset++] = data[i].data_len + 1;  // Length
@@ -1011,10 +1012,27 @@ static int platform_create_adv_set(const adv_param_t *param,
             memcpy(&adv_data[offset], data[i].data, data[i].data_len);
             offset += data[i].data_len;
         }
-        
-        status = sl_bt_extended_advertiser_set_data(handle, offset, adv_data);
+
+        /* BLE4 (legacy) slot must use sl_bt_legacy_advertiser_set_data;
+         * extended slots use sl_bt_extended_advertiser_set_data.
+         * Check stored options to decide which path to take. */
+        int adv_index = get_adv_index_by_handle(handle);
+        bool is_legacy = (adv_index >= 0)
+                         && !(stored_adv_params[adv_index].options & BT_LE_ADV_OPT_EXT_ADV);
+
+        if (is_legacy) {
+            if (adv_index >= 4 || !burst_active[adv_index]
+                || burst_remaining[adv_index] == LOSS_TEST_BURST_COUNT - 1
+                || burst_remaining[adv_index] % 50 == 0) {
+                DEBUG_PRINT("  [ADV %d] legacy_set_data: len=%u\n", handle, offset);
+            }
+            /* type=0 → advertising data (not scan response) */
+            status = sl_bt_legacy_advertiser_set_data(handle, 0, offset, adv_data);
+        } else {
+            status = sl_bt_extended_advertiser_set_data(handle, offset, adv_data);
+        }
         return (status == SL_STATUS_OK) ? 0 : -EIO;
-        
+
     }
     
     /**
@@ -1067,9 +1085,9 @@ static int platform_create_adv_set(const adv_param_t *param,
                 }
                 
                 /* During burst chaining print only on first event and every 50 events */
-                if (handle >= 4 || !burst_active[handle]
-                    || burst_remaining[handle] == LOSS_TEST_BURST_COUNT - 1
-                    || burst_remaining[handle] % 50 == 0) {
+                if (adv_index >= 4 || !burst_active[adv_index]
+                    || burst_remaining[adv_index] == LOSS_TEST_BURST_COUNT - 1
+                    || burst_remaining[adv_index] % 50 == 0) {
                     DEBUG_PRINT("  [ADV %d] num_events=%u, interval=%lu ms, duration=%lu ms (0x%04lX * 10ms)\n",
                                handle, param->num_events,
                                (unsigned long)max_interval_ms,
@@ -1138,7 +1156,15 @@ static int platform_create_adv_set(const adv_param_t *param,
             uint8_t connection_mode = is_connectable ? 
                 sl_bt_extended_advertiser_connectable :
                 sl_bt_extended_advertiser_non_connectable;
-            
+
+            /* Print start info; suppress during burst chaining to avoid flooding */
+            if (adv_index >= 4 || !burst_active[adv_index]
+                || burst_remaining[adv_index] == LOSS_TEST_BURST_COUNT - 1
+                || burst_remaining[adv_index] % 50 == 0) {
+                DEBUG_PRINT("  [ADV %d] ext_start: mode=%u flags=0x%02X\n",
+                           handle, connection_mode, sl_flags);
+            }
+
             status = sl_bt_extended_advertiser_start(handle,
                                                      connection_mode,
                                                      sl_flags);
@@ -1147,7 +1173,12 @@ static int platform_create_adv_set(const adv_param_t *param,
             uint8_t connection_mode = is_connectable ?
                 sl_bt_legacy_advertiser_connectable :
                 sl_bt_legacy_advertiser_non_connectable;
-                
+
+            if (adv_index >= 4 || !burst_active[adv_index]
+                || burst_remaining[adv_index] == LOSS_TEST_BURST_COUNT - 1
+                || burst_remaining[adv_index] % 50 == 0) {
+                DEBUG_PRINT("  [ADV %d] legacy_start: mode=%u\n", handle, connection_mode);
+            }
             status = sl_bt_legacy_advertiser_start(handle, connection_mode);
         }
         
@@ -2523,12 +2554,16 @@ const char* get_peek_msg_buffer(uint8_t index)
  */
 void losstst_adv_sent_handler(adv_handle_t adv_handle)
 {
-    uint8_t index = adv_handle;
-    
-    if (num_adv_set <= index) {
+    /* Resolve hardware handle → logical PHY index.
+     * adv_handle is the BLE controller slot ID; ext_adv[i] stores that value
+     * at logical index i.  They are NOT guaranteed to be equal (e.g. when
+     * only 1M PHY is tested, ext_adv[1] may hold handle 0). */
+    int logical = get_adv_index_by_handle(adv_handle);
+    if (logical < 0 || (uint8_t)logical >= num_adv_set) {
         return;
     }
-    
+    uint8_t index = (uint8_t)logical;
+
     /* Mark advertising as stopped */
     ext_adv_status[index].stop = 1;
     
