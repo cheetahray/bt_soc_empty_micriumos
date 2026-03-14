@@ -82,6 +82,22 @@
 // [TIMER4]$
 
 // $[USART0]
+// USART0 RX on PB01
+#ifndef USART0_RX_PORT                          
+#define USART0_RX_PORT                           SL_GPIO_PORT_B
+#endif
+#ifndef USART0_RX_PIN                           
+#define USART0_RX_PIN                            1
+#endif
+
+// USART0 TX on PB00
+#ifndef USART0_TX_PORT                          
+#define USART0_TX_PORT                           SL_GPIO_PORT_B
+#endif
+#ifndef USART0_TX_PIN                           
+#define USART0_TX_PIN                            0
+#endif
+
 // [USART0]$
 
 // $[USART1]

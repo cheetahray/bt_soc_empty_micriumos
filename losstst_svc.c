@@ -4572,7 +4572,7 @@ static void device_found_extended(const bd_addr *addr, int8_t rssi, int8_t tx_po
 
     extended_found_count++;
     bool is_test_pkt = losstst_check_form_id(ad_data, ad_len);
-    if (is_test_pkt && (extended_found_count <= 5 || (extended_found_count % 100U) == 0U)) {
+    if (log_this && is_test_pkt && (extended_found_count <= 5 || (extended_found_count % 100U) == 0U)) {
         SCAN_LOG("[SCAN][EXT] cnt=%lu len=%u rssi=%d txpwr=%d phy=%u/%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
              (unsigned long)extended_found_count,
              ad_len,

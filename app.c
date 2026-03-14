@@ -35,8 +35,19 @@
 #include "ble_log.h"
 #include "lcd_ui.h"
 #include "sl_simple_button_instances.h"
+#include "sl_iostream.h"
+#include "sl_iostream_init_usart_instances.h"
 #include "cmsis_os2.h"
 #include <stdio.h>
+
+/* EXP_PRINTF: print directly to expansion header UART (always) */
+#define EXP_PRINTF(fmt, ...) do { \
+    char _exp_buf[128]; \
+    int _exp_len = snprintf(_exp_buf, sizeof(_exp_buf), fmt, ##__VA_ARGS__); \
+    if (_exp_len > 0) { \
+        sl_iostream_write(sl_iostream_exp_handle, _exp_buf, (size_t)_exp_len); \
+    } \
+} while(0)
 
 /* Debug print macro - outputs to BLE if connected, otherwise to UART */
 #define DEBUG_PRINT(fmt, ...) do { \

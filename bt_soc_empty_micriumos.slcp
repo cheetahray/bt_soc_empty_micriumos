@@ -94,6 +94,9 @@ component:
   id: device_init
 - package: simplicity_sdk
   vendor: silabs
+  id: dmd_memlcd
+- package: simplicity_sdk
+  vendor: silabs
   id: gatt_configuration
 - package: simplicity_sdk
   vendor: silabs
@@ -109,6 +112,7 @@ component:
   id: iostream_retarget_stdio
 - package: simplicity_sdk
   instance:
+  - exp
   - vcom
   vendor: silabs
   id: iostream_usart
