@@ -33,7 +33,6 @@
 #include "app.h"
 #include "losstst_svc.h"
 #include "ble_log.h"
-#include "sl_simple_button_instances.h"
 #include "sl_iostream.h"
 #include "sl_iostream_init_usart_instances.h"
 #include "silabs_spec_uart_shim.h"
@@ -108,11 +107,6 @@ static bool scan_log_addr_match(const bd_addr *addr)
 
 // The advertising set handle allocated from Bluetooth stack.
 static uint8_t advertising_set_handle = 0xff;
-
-// Event flags for button handling (to avoid LCD operations in interrupt context)
-static osEventFlagsId_t button_event_flags = NULL;
-#define BTN0_PRESSED_FLAG  (1U << 0)  // Button 0 pressed event
-#define BTN1_PRESSED_FLAG  (1U << 1)  // Button 1 pressed event
 
 // BLE Log characteristic handle
 // Log Output characteristic value handle (0x1b = 27) from gatt_db.c
@@ -258,11 +252,6 @@ void app_init(void)
     /* Initialize BLE log service */
     ble_log_init();
     
-    /* Create event flags for button handling */
-    button_event_flags = osEventFlagsNew(NULL);
-    if (button_event_flags == NULL) {
-    }
-    
     /* Initialize BLE loss test service */
     err = losstst_init();
     if (err) {
@@ -289,19 +278,6 @@ void app_process_action(void)
     // This is will run each time app_proceed() is called.                     //
     // Do not call blocking functions from here!                               //
     /////////////////////////////////////////////////////////////////////////////
-    
-    /* Handle button events from interrupt context */
-    if (button_event_flags != NULL) {
-        uint32_t flags = osEventFlagsGet(button_event_flags);
-        
-        if (flags & BTN0_PRESSED_FLAG) {
-            osEventFlagsClear(button_event_flags, BTN0_PRESSED_FLAG);
-        }
-        
-        if (flags & BTN1_PRESSED_FLAG) {
-            osEventFlagsClear(button_event_flags, BTN1_PRESSED_FLAG);
-        }
-    }
     
     static uint32_t uptime_barrier_ms = 0;
     bool re_sche = false;
