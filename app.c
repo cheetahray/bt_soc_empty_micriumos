@@ -33,7 +33,6 @@
 #include "app.h"
 #include "losstst_svc.h"
 #include "ble_log.h"
-#include "lcd_ui.h"
 #include "sl_simple_button_instances.h"
 #include "sl_iostream.h"
 #include "sl_iostream_init_usart_instances.h"
@@ -264,11 +263,6 @@ void app_init(void)
     if (button_event_flags == NULL) {
     }
     
-    /* Initialize LCD UI */
-    if (lcd_ui_init() == 0) {
-    } else {
-    }
-    
     /* Initialize BLE loss test service */
     err = losstst_init();
     if (err) {
@@ -282,9 +276,6 @@ void app_init(void)
     /* Load default parameters */
     load_parm_cfg();
     
-    /* Show startup screen with loaded configuration */
-    lcd_ui_show_startup(&round_test_parm);
-
     //EXP_PRINTF("=== EXP UART OK ===\r\n");
 
 }
@@ -305,12 +296,10 @@ void app_process_action(void)
         
         if (flags & BTN0_PRESSED_FLAG) {
             osEventFlagsClear(button_event_flags, BTN0_PRESSED_FLAG);
-            lcd_ui_expand_selection();
         }
         
         if (flags & BTN1_PRESSED_FLAG) {
             osEventFlagsClear(button_event_flags, BTN1_PRESSED_FLAG);
-            lcd_ui_next_selection();
         }
     }
     

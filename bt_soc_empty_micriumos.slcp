@@ -94,16 +94,10 @@ component:
   id: device_init
 - package: simplicity_sdk
   vendor: silabs
-  id: dmd_memlcd
-- package: simplicity_sdk
-  vendor: silabs
   id: gatt_configuration
 - package: simplicity_sdk
   vendor: silabs
   id: gatt_service_device_information_override
-- package: simplicity_sdk
-  vendor: silabs
-  id: glib
 - package: simplicity_sdk
   vendor: silabs
   id: iostream_recommended_stream
@@ -116,9 +110,6 @@ component:
   - vcom
   vendor: silabs
   id: iostream_usart
-- package: simplicity_sdk
-  vendor: silabs
-  id: memlcd_eusart
 - package: simplicity_sdk
   vendor: silabs
   id: memory_manager
