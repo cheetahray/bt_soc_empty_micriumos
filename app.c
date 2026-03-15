@@ -603,7 +603,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
         ext_scan_evt_count++;
         bool ext_is_test_pkt = losstst_check_form_id(scan_evt->data.data, scan_evt->data.len);
-        if (ext_is_test_pkt && (ext_scan_evt_count <= 5 || (ext_scan_evt_count % 100U) == 0U)) {
+        if (log_this && ext_is_test_pkt && (ext_scan_evt_count <= 5 || (ext_scan_evt_count % 100U) == 0U)) {
             SCAN_LOG("[SCAN_EVT][EXT] evt=0x%08lX cnt=%lu len=%u rssi=%d txpwr=%d phy=%u/%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
                      (unsigned long)evt_id,
                      (unsigned long)ext_scan_evt_count,

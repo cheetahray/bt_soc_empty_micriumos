@@ -95,7 +95,7 @@ void ble_log_printf(const char *format, ...)
     }
     
     /* Ensure null termination and limit length */
-    if (len >= sizeof(send_buffer)) {
+    if ((size_t)len >= sizeof(send_buffer)) {
         len = sizeof(send_buffer) - 1;
     }
     send_buffer[len] = '\0';

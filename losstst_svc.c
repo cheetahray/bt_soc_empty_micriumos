@@ -497,10 +497,10 @@ static adv_param_t stored_adv_params[MAX_ADV_SETS];
 
 /* Advertising data payloads */
 static device_info_t device_info_form[4] = {
-    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255},
-    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255},
-    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255},
-    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255}
+    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255, {0}},
+    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255, {0}},
+    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255, {0}},
+    {MANUFACTURER_ID, LOSS_TEST_FORM_ID, INT16_MIN, 255, {0}}
 };
 
 static device_info_bt4_t device_info_bt4_form = {
@@ -510,8 +510,8 @@ static device_info_bt4_t device_info_bt4_form = {
 static device_info_bt4_t numcast_bt4_form;
 static device_info_t remote_resp_form[4]={{.man_id=0},{.man_id=0},{.man_id=0},{.man_id=0}};
 
-static numcast_info_t numcast_info_form = {MANUFACTURER_ID, LOSS_TEST_FORM_ID};
-static uint16_t *const p_number_cast_form = (uint16_t *)&numcast_info_form.number_cast_form;
+static numcast_info_t numcast_info_form = {MANUFACTURER_ID, LOSS_TEST_FORM_ID, {0}};
+static uint16_t *const p_number_cast_form = numcast_info_form.number_cast_form;
 
 /* Advertising data sets for each advertising set */
 static adv_data_t ratio_test_data_set[MAX_ADV_SETS][8];
@@ -1116,7 +1116,7 @@ static int platform_create_adv_set(const adv_param_t *param,
                                    handle,
                                    (interval_min > interval_max) ? "interval_min > interval_max; " : "",
                                    (interval_min < 0x0020 || interval_max < 0x0020) ? "interval < 20ms; " : "",
-                                   (interval_max > 0xFFFF) ? "interval > max; " : "check set state/options");
+                                   "check set state/options");
                     }
                 }
             }
@@ -2351,7 +2351,7 @@ static void init_txpwr_setval(void)
 	};
 	
 	// Copy known power levels to the array
-	for (int i = 0; i < sizeof(known_powers) / sizeof(known_powers[0]) && idx < 20; i++) {
+	for (size_t i = 0; i < sizeof(known_powers) / sizeof(known_powers[0]) && idx < 20; i++) {
 		txpwr_setval[0][idx].sv = known_powers[i].sv;
 		txpwr_setval[0][idx].pv = known_powers[i].pv;
 		idx++;
