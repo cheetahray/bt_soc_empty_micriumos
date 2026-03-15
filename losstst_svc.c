@@ -564,25 +564,17 @@ uint16_t sub_total_rcv[4];
 int8_t peek_rcv_rssi[4][3];
 int8_t remote_tx_pwr[4];
 
-uint16_t round_total_num;       /**< Target total packet count */
-int8_t round_tx_pwr;            /**< Current TX power (d
-ner mode variables (required by scanner_peek_msg) */
-recv_stats_t rec_sets[4];       /**< Reception statistics for 4 PHYs */
-uint16_t sub_total_rcv[4];      /**< Total packets received per PHY */
-int8_t peek_rcv_rssi[4][3];     /**< RSSI [PHY][cur/min/max] */
-int8_t remote_tx_pwr[4];        /**< Remote device TX power per 
-tional variables required by setup functions */
-uint8_t round_adv_param_index;  /**< Advertising parameter index */
-uint16_t enum_total_num[]={500,1000,2000,5000,10000,20000,50000};   /**< Total packet count enumeration */
-bool ignore_rcv_resp;           /**< Ignore received responses flag */
-bool inhibit_ch37;              /**< Inhibit advertising channel 37 */
-bool inhibit_ch38;              /**< Inhibit advertising channel 38 */
-bool inhibit_ch39;              /**< Inhibit advertising channel 39 */
-bool non_ANONYMOUS;             /**< Non-anonymous advertising flag */
-bool scanner_inactive;          /**< Scanner inactive flag */
-uint64_t number_cast_val;       /**< Number cast value */
-uint64_t number_cast_rxval;     /**< Number cast received value */
-bool number_cast_auto;          /**< Number cast auto mode flag */
+static uint8_t round_adv_param_index;
+static const uint16_t enum_total_num[] = {500, 1000, 2000, 5000, 10000, 20000, 50000};
+bool ignore_rcv_resp;
+bool inhibit_ch37;
+bool inhibit_ch38;
+bool inhibit_ch39;
+bool non_ANONYMOUS;
+bool scanner_inactive;
+uint64_t number_cast_val;
+uint64_t number_cast_rxval;
+bool number_cast_auto;
 static int16_t precnt_rcv[4];
 /* Burst-chaining state: one advertising event at a time so each event carries
  * a unique, decrementing pre_cnt value — required by the receiver's loss count. */
@@ -2392,6 +2384,33 @@ int8_t enum_txpower(int8_t dir)
 	return txpwr_setval[0][txpwr_idx].pv;
 }
 
+int8_t get_txpower_sv(int8_t process_value)
+{
+	if (txpwr_idx >= ARRAY_SIZE(txpwr_setval[0])) init_txpwr_setval();
+	uint8_t idx = 0;
+	while (txpwr_setval[0][idx].pv > process_value) idx++;
+	if (INT8_MIN == txpwr_setval[0][idx].pv) idx--;
+	return txpwr_setval[0][idx].sv;
+}
+
+int8_t get_txpower_pv(int8_t set_value)
+{
+	if (txpwr_idx >= ARRAY_SIZE(txpwr_setval[0])) init_txpwr_setval();
+	uint8_t idx = 0;
+	while (txpwr_setval[1][idx].sv > set_value) idx++;
+	if (INT8_MIN == txpwr_setval[1][idx].sv) idx--;
+	return txpwr_setval[1][idx].pv;
+}
+
+int8_t get_txpower_effect(int8_t tx_power_level)
+{
+	if (txpwr_idx >= ARRAY_SIZE(txpwr_setval[0])) init_txpwr_setval();
+	uint8_t idx = 0;
+	while (txpwr_setval[0][idx].pv > tx_power_level) idx++;
+	if (INT8_MIN == txpwr_setval[0][idx].pv) idx--;
+	return txpwr_setval[0][idx].pv;
+}
+
 uint8_t enum_adv_interval_idx(int8_t dir) /* index func(1:next / -1:previous / 0:current) */
 {
 	if (0 < dir) cfg_interval_sel_idx++;
@@ -2770,11 +2789,13 @@ int losstst_sender(void)
             for (int idx = 0; idx <= 3; idx++) {
                 if (lc_phy_sel[idx]) {
                     /* Use group 3 parameters (1 second interval) for pre-burst */
-                    const adv_param_t *work_adv_param = non_connectable_adv_param_x[3][idx];
+                    adv_param_t work_adv_param = *non_connectable_adv_param_x[3][idx];
+                    work_adv_param.options |= adv_param_mask[1];
+                    work_adv_param.options &= ~adv_param_mask[0];
                     if (idx == 3) {
                         device_info_bt4_form.device_info = device_info_form[3];
                     }
-                    update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
+                    update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
                     snd_state_val[idx] = 1;
                 }
             }
@@ -2871,12 +2892,14 @@ int losstst_sender(void)
         for (int idx = 0; idx <= 3; idx++) {
             if (lc_phy_sel[idx]) {
                 /* Use configured interval for burst transmission */
-                const adv_param_t *work_adv_param = non_connectable_adv_param_x[round_adv_param_index][idx];
+                adv_param_t work_adv_param = *non_connectable_adv_param_x[round_adv_param_index][idx];
+                work_adv_param.options |= adv_param_mask[1];
+                work_adv_param.options &= ~adv_param_mask[0];
                 if (idx == 3) {
                     device_info_bt4_form.device_info = device_info_form[3];
                 }
                 DEBUG_PRINT("PHY[%d]: Starting burst with %d events (1-event chain)\n", idx, LOSS_TEST_BURST_COUNT);
-                update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_1event_start_param);
+                update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_1event_start_param);
                 snd_state_val[idx] = 2;
             }
         }
@@ -2938,8 +2961,10 @@ int losstst_sender(void)
                 }
                 
                 /* Use group 3 parameters (1 second interval) for post-burst */
-                const adv_param_t *work_adv_param = non_connectable_adv_param_x[3][idx];
-                update_adv(idx, work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
+                adv_param_t work_adv_param = *non_connectable_adv_param_x[3][idx];
+                work_adv_param.options |= adv_param_mask[1];
+                work_adv_param.options &= ~adv_param_mask[0];
+                update_adv(idx, &work_adv_param, ratio_test_data_set[idx], p_adv_default_start_param);
                 
                 /* Update transmission counters */
                 uint16_t old_count, new_count;
@@ -4640,4 +4665,150 @@ void sl_bt_scanner_process_extended_report(const bd_addr *addr, int8_t rssi, int
                                           const uint8_t *ad_data, uint16_t ad_len)
 {
     device_found_extended(addr, rssi, tx_power, prim_phy, sec_phy, ad_data, ad_len);
+}
+
+/* ================== Missing accessor/toggle wrappers (used by silabs_ext_scr_svc.c) ================== */
+
+/* ---- Config getters ---- */
+bool get_cfg_ANONYMOUS(void) { return !get_cfg_NON_ANONYMOUS(); }
+int8_t get_soc_dcdc(void)    { return 2; /* EFR32 DC-DC state fixed at boot */ }
+bool get_cfg_phy2m(void)     { return get_cfg_phy_sel(0); }
+bool get_cfg_phy1m(void)     { return get_cfg_phy_sel(1); }
+bool get_cfg_phy8s(void)     { return get_cfg_phy_sel(2); }
+bool get_cfg_phyBLEv4(void)  { return get_cfg_phy_sel(3); }
+bool get_number_cast_auto(void) { return number_cast_auto ? 1 : 0; }
+
+/* ---- Config toggles ---- */
+bool chg_cfg_phy2m(void)       { cfg_phy_sel[0] = !cfg_phy_sel[0]; return get_cfg_phy_sel(0); }
+bool chg_cfg_phy1m(void)       { cfg_phy_sel[1] = !cfg_phy_sel[1]; return get_cfg_phy_sel(1); }
+bool chg_cfg_phy8s(void)       { cfg_phy_sel[2] = !cfg_phy_sel[2]; return get_cfg_phy_sel(2); }
+bool chg_cfg_phyBLEv4(void)    { cfg_phy_sel[3] = !cfg_phy_sel[3]; return get_cfg_phy_sel(3); }
+bool chg_cfg_ANONYMOUS(void)   { cfg_non_ANONYMOUS = !cfg_non_ANONYMOUS; return (!cfg_non_ANONYMOUS && !get_cfg_phyBLEv4()) ? 1 : 0; }
+void chg_uni_cast_method(void) { uni_cast_method ^= true; }
+int  chg_soc_dcdc(void)        { return -1; /* no-op: DC-DC state is fixed at boot */ }
+bool chg_number_cast_auto(void){ number_cast_auto = !number_cast_auto; return number_cast_auto ? 1 : 0; }
+bool chg_cfg_ch37(void) {
+    cfg_inhibit_ch37 = !cfg_inhibit_ch37;
+    if (cfg_inhibit_ch37 && cfg_inhibit_ch38 && cfg_inhibit_ch39) cfg_inhibit_ch39 = false;
+    return (!cfg_inhibit_ch37) ? 1 : 0;
+}
+bool chg_cfg_ch38(void) {
+    cfg_inhibit_ch38 = !cfg_inhibit_ch38;
+    if (cfg_inhibit_ch37 && cfg_inhibit_ch38 && cfg_inhibit_ch39) cfg_inhibit_ch39 = false;
+    return (!cfg_inhibit_ch38) ? 1 : 0;
+}
+bool chg_cfg_ch39(void) {
+    cfg_inhibit_ch39 = !cfg_inhibit_ch39;
+    if (cfg_inhibit_ch37 && cfg_inhibit_ch38 && cfg_inhibit_ch39) cfg_inhibit_ch39 = false;
+    return (!cfg_inhibit_ch39) ? 1 : 0;
+}
+
+int8_t rcv_state_progress(uint8_t idx)
+{
+    int8_t retval = (4 > idx) ? rcv_state_val[idx] : 0;
+    int16_t progress = precnt_rcv[idx];
+    if (1 == retval && -1 == progress) retval = 2;
+    return retval;
+}
+
+/* RC / RM protocol stubs — not yet ported to SiLabs */
+bool rc_msg_outgoing(void *msg_p, size_t sz)      { (void)msg_p; (void)sz; return false; }
+bool rc_rush_msg_outgoing(void *msg_p, size_t sz) { (void)msg_p; (void)sz; return false; }
+bool rm_msg_outgoing(void *msg_p, size_t sz)      { (void)msg_p; (void)sz; return false; }
+bool rm_rush_msg_outgoing(void *msg_p, size_t sz) { (void)msg_p; (void)sz; return false; }
+
+static bt_addr_le_t s_rc_party_addr;
+static bool s_rc_party_valid = false;
+
+bool set_rc_party(bt_addr_le_t *addr_p)
+{
+    if (!addr_p) return false;
+    s_rc_party_addr  = *addr_p;
+    s_rc_party_valid = true;
+    return true;
+}
+
+void clr_rc_party(void)
+{
+    memset(&s_rc_party_addr, 0, sizeof(s_rc_party_addr));
+    s_rc_party_valid = false;
+}
+
+bool chk_rc_party(void *ptr)
+{
+    (void)ptr;
+    return s_rc_party_valid;
+}
+
+/* ---- numcst_setval / numcst_rxval ---- */
+int16_t numcst_setval(uint8_t field, int16_t setval)
+{
+    int16_t retval;
+    if (4 <= field) retval = INT16_MIN;
+    else if (0 > setval) {
+        retval = *(field + p_number_cast_form);
+    } else if (1000 > setval) {
+        retval = *(field + p_number_cast_form) = setval;
+    } else {
+        if (1000 <= (retval = *(field + p_number_cast_form) + (setval - 1000))) retval -= 1000;
+        *(field + p_number_cast_form) = retval;
+    }
+    return retval;
+}
+
+int16_t numcst_rxval(uint8_t field)
+{
+    uint16_t *number_cast_rx = (uint16_t *)&number_cast_rxval;
+    return *(field + number_cast_rx);
+}
+
+/* ---- ID/RSSI accessors ---- */
+uint8_t sender_id_upper(void) { return (uint8_t)(sndr_id >> 8); }
+uint8_t sender_id_lower(void) { return (uint8_t)(sndr_id & 0xFF); }
+uint8_t node_id_upper(void)   { return device_address[1]; }
+uint8_t node_id_lower(void)   { return device_address[0]; }
+uint8_t numcst_src_id_upper(void) { return numcst_src_node[0]; }
+uint8_t numcst_src_id_lower(void) { return numcst_src_node[1]; }
+int8_t  numcst_rssi_lower(void)   { return numcst_rssi[1]; }
+int8_t  numcst_rssi_upper(void)   { return numcst_rssi[2]; }
+int8_t  numcst_rssi_average(void) { return numcst_rssi[0]; }
+
+/* ---- RX / ENV RSSI & stats accessors ---- */
+int8_t rcv_rssi_lower(int idx)   { return (idx>=0&&idx<=3) ? rcv_rssi_val[idx][1] : 0; }
+int8_t rcv_rssi_upper(int idx)   { return (idx>=0&&idx<=3) ? rcv_rssi_val[idx][2] : 0; }
+int8_t rcv_rssi_average(int idx) { return (idx>=0&&idx<=3) ? rcv_rssi_val[idx][0] : 0; }
+int8_t envmon_rssi_lower(int idx)  { return (idx>=0&&idx<=3) ? env_rssi[idx][1] : 0; }
+int8_t envmon_rssi_upper(int idx)  { return (idx>=0&&idx<=3) ? env_rssi[idx][2] : 0; }
+int8_t envmon_rssi_average(int idx){ return (idx>=0&&idx<=3) ? env_rssi[idx][0] : 0; }
+uint32_t env_stats_val(int idx)  { return (idx>=0&&idx<=3) ? env_stats[idx]  : 0; }
+uint32_t rcv_stats_val(int idx)  { return (idx>=0&&idx<=3) ? rcv_stats[idx]  : 0; }
+
+/* ---- Advertising interval / totalnum / txpower ---- */
+uint16_t adv_interval_lower(uint8_t idx)
+{
+    if (idx >= (uint8_t)(sizeof(value_interval)/sizeof(value_interval[0]))) return 0;
+    return value_interval[idx][0];
+}
+uint16_t adv_interval_upper(uint8_t idx)
+{
+    if (idx >= (uint8_t)(sizeof(value_interval)/sizeof(value_interval[0]))) return 0;
+    return value_interval[idx][1];
+}
+uint16_t enum_totalnum(int8_t dir)  { return enum_total_num[enum_totalnum_idx(dir)]; }
+int8_t   sender_txpower(void)       { return sndr_txpower; }
+
+/* ---- TX/RX ratio accessors ---- */
+uint16_t xmt_ratio_lower(int idx) { return (idx>=0&&idx<=3) ? xmt_ratio_val[idx][0] : 0; }
+uint16_t xmt_ratio_upper(int idx) { return (idx>=0&&idx<=3) ? xmt_ratio_val[idx][1] : 0; }
+uint16_t rcv_ratio_lower(int idx) { return (idx>=0&&idx<=3) ? rcv_ratio_val[idx][0] : 0; }
+uint16_t rcv_ratio_upper(int idx) { return (idx>=0&&idx<=3) ? rcv_ratio_val[idx][1] : 0; }
+
+/* ---- State mark functions ---- */
+uint8_t snd_state_mark(int idx)    { return (idx>=0&&idx<=3) ? (uint8_t)snd_state_val[idx] : 0; }
+uint8_t rcv_state_mark(int idx)    { return (idx>=0&&idx<=3) ? (uint8_t)rcv_state_val[idx] : 0; }
+bool numcast_phy_mark(uint8_t idx)
+{
+    if (3 < idx) return false;
+    int64_t msec_tm = platform_uptime_get();
+    return (numcst_phy_stamp_tm[idx] > msec_tm) ? true : false;
 }

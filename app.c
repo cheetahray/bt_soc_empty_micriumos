@@ -37,8 +37,11 @@
 #include "sl_simple_button_instances.h"
 #include "sl_iostream.h"
 #include "sl_iostream_init_usart_instances.h"
+#include "silabs_spec_uart_shim.h"
 #include "cmsis_os2.h"
 #include <stdio.h>
+
+extern void extscr_init(void);
 
 /* EXP_PRINTF: print directly to expansion header UART (always) */
 #define EXP_PRINTF(fmt, ...) do { \
@@ -57,6 +60,11 @@
         printf(fmt, ##__VA_ARGS__); \
     } \
 } while(0)
+
+/* is_re_sche() verbose debug log: 1=on, 0=off (produces high-frequency output) */
+#ifndef IS_RE_SCHE_DEBUG_VERBOSE
+#define IS_RE_SCHE_DEBUG_VERBOSE 0
+#endif
 
 /* Scan RX verbose log switch: 1=on, 0=off */
 #ifndef SCAN_RX_VERBOSE_LOG
@@ -146,28 +154,37 @@ static int is_re_sche(int update)
     if (numcst_task_tgr(0) > tgr_val) tgr_val = numcst_task_tgr(0);
     if (envmon_task_tgr(0) > tgr_val) tgr_val = envmon_task_tgr(0);
     
+#if IS_RE_SCHE_DEBUG_VERBOSE
     /* Debug only when values change */
     if (last_logged_stamp != extscr_tgr_stamp || last_logged_tgr_val != tgr_val) {
-        DEBUG_PRINT("is_re_sche: update=%d stamp=%d tgr_val=%d numcst=%d\n", 
+        DEBUG_PRINT("is_re_sche: update=%d stamp=%d tgr_val=%d numcst=%d\n",
                    update, extscr_tgr_stamp, tgr_val, numcst_task_tgr(0));
         last_logged_stamp = extscr_tgr_stamp;
         last_logged_tgr_val = tgr_val;
     }
-    
+#else
+    (void)last_logged_stamp;
+    (void)last_logged_tgr_val;
+#endif
+
     if (extscr_tgr_stamp == 0 && tgr_val != 0) {
         /* Task trigger activated */
         result = 2;
-        DEBUG_PRINT("is_re_sche: Task activated! stamp=0->%d, result=%d, update=%d\n", 
+#if IS_RE_SCHE_DEBUG_VERBOSE
+        DEBUG_PRINT("is_re_sche: Task activated! stamp=0->%d, result=%d, update=%d\n",
                    tgr_val, result, update);
+#endif
         if (update) {
             extscr_tgr_stamp = tgr_val;
         }
-    } 
+    }
     else if (extscr_tgr_stamp != 0 && tgr_val == 0) {
         /* Task trigger cleared */
         result = -2;
-        DEBUG_PRINT("is_re_sche: Task STOPPED! stamp=%d->0, result=%d, update=%d\n", 
+#if IS_RE_SCHE_DEBUG_VERBOSE
+        DEBUG_PRINT("is_re_sche: Task STOPPED! stamp=%d->0, result=%d, update=%d\n",
                    extscr_tgr_stamp, result, update);
+#endif
         if (update) {
             extscr_tgr_stamp = tgr_val;
         }
@@ -209,9 +226,7 @@ static bool tst_envmon_abort(void)
  */
 static void load_parm_cfg(void)
 {
-    /* These functions should be implemented based on your config system */
-    /* Example placeholder values: */
-    round_test_parm.txpwr = 0;  // Default: 0 dBm (safe and moderate power)
+    round_test_parm.txpwr = enum_txpower(0);
     round_test_parm.count_idx = enum_totalnum_idx(0);      // enum_totalnum_idx(0)
     round_test_parm.interval_idx = enum_adv_interval_idx(0);   // enum_adv_interval_idx(0)
     
@@ -261,13 +276,17 @@ void app_init(void)
     }
     
     /* Initialize external peripherals if needed */
-    // extscr_init();  // External screen/UART interface
+    spec_uart_shim_init();  /* Must come before extscr_init */
+    extscr_init();  /* Start external screen/UART interface thread */
     
     /* Load default parameters */
     load_parm_cfg();
     
     /* Show startup screen with loaded configuration */
     lcd_ui_show_startup(&round_test_parm);
+
+    //EXP_PRINTF("=== EXP UART OK ===\r\n");
+
 }
 
 // Application Process Action.
@@ -468,7 +487,7 @@ void app_process_action(void)
         int err = losstst_numcast();
         if (err <= 0) {
             task_NUMCAST = false;
-            numcst_task_tgr(-numcst_task_tgr(0));
+            sender_task_tgr(-sender_task_tgr(0));
         }
     }
     // 若所有 range test 任务都结束
@@ -493,32 +512,25 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
     // -------------------------------
     // This event indicates the device has started and the radio is ready.
     // Do not call any stack command before receiving this boot event!
-    // case sl_bt_evt_system_boot_id:
-        //     DEBUG_PRINT("[ADV] System boot - initializing\n");
-        //     // 建立手机连接用的 advertising set (set 5)
-        //     // losstst_svc 使用 sets 0-4 for range test
-        //     sc = sl_bt_advertiser_create_set(&advertising_set_handle);
-        //     app_assert_status(sc);
-
-        //     // Generate data for advertising
-        //     sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
-        //                                                                                          sl_bt_advertiser_general_discoverable);
-        //     app_assert_status(sc);
-
-        //     // Set advertising interval to 100ms.
-        //     sc = sl_bt_advertiser_set_timing(
-        //         advertising_set_handle,
-        //         160, // min. adv. interval (milliseconds * 1.6)
-        //         160, // max. adv. interval (milliseconds * 1.6)
-        //         0,   // adv. duration
-        //         0);  // max. num. adv. events
-        //     app_assert_status(sc);
-        //     // Start advertising and enable connections.
-        //     sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
-        //                                                                          sl_bt_legacy_advertiser_connectable);
-        //     app_assert_status(sc);
-        //     DEBUG_PRINT("[ADV] Connection advertising started\n");
-        //     break;
+    case sl_bt_evt_system_boot_id:
+        DEBUG_PRINT("[ADV] System boot - initializing\n");
+        /* Create connection advertising set (set 5); losstst_svc uses sets 0-4 */
+        sc = sl_bt_advertiser_create_set(&advertising_set_handle);
+        app_assert_status(sc);
+        sc = sl_bt_legacy_advertiser_generate_data(advertising_set_handle,
+                                                   sl_bt_advertiser_general_discoverable);
+        app_assert_status(sc);
+        sc = sl_bt_advertiser_set_timing(advertising_set_handle,
+                                         160, /* min interval 100 ms */
+                                         160, /* max interval 100 ms */
+                                         0,   /* adv duration: continuous */
+                                         0);  /* max adv events: unlimited */
+        app_assert_status(sc);
+        sc = sl_bt_legacy_advertiser_start(advertising_set_handle,
+                                           sl_bt_legacy_advertiser_connectable);
+        app_assert_status(sc);
+        DEBUG_PRINT("[ADV] Connection advertising started\n");
+        break;
 
         // -------------------------------
         // This event indicates that a new connection was opened.

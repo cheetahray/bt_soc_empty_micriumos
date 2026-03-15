@@ -16,6 +16,7 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 #include "sl_bt_api.h"
+#include "silabs_nordic_compat.h"
 
 /* ================== Type Definitions ================== */
 
@@ -235,6 +236,15 @@ int8_t numcst_task_tgr(int8_t set);
  */
 int8_t envmon_task_tgr(int8_t set);
 
+/**
+ * @brief Get task running status (used for UI indicators)
+ * @return 0=idle, 1=running (this task), 2=blocked (other task running)
+ */
+int8_t envmon_task_status(void);
+int8_t sender_task_status(void);
+int8_t scanner_task_status(void);
+int8_t numcst_task_status(void);
+
 /* ================== Configuration Enumeration Functions ================== */
 
 /**
@@ -303,11 +313,130 @@ bool get_cfg_ch39(void);
 bool get_cfg_NON_ANONYMOUS(void);
 
 /**
+ * @brief Get anonymous advertising mode status
+ * 
+ * @return true if anonymous mode is active (i.e. non_ANONYMOUS == false)
+ */
+bool get_cfg_ANONYMOUS(void);
+
+/**
+ * @brief Get SoC DC-DC converter power mode
+ * 
+ * @return 0=LN (LDO only), 1=SW (DC-DC switching), 2=Unknown
+ */
+int8_t get_soc_dcdc(void);
+
+/**
+ * @brief Get 2M PHY selection status
+ * @return true if 2M PHY is selected
+ */
+bool get_cfg_phy2m(void);
+
+/**
+ * @brief Get 1M PHY selection status
+ * @return true if 1M PHY is selected
+ */
+bool get_cfg_phy1m(void);
+
+/**
+ * @brief Get Coded PHY S=8 selection status
+ * @return true if Coded S8 PHY is selected
+ */
+bool get_cfg_phy8s(void);
+
+/**
+ * @brief Get BLE 4.x legacy PHY selection status
+ * @return true if BLE4 legacy PHY is selected
+ */
+bool get_cfg_phyBLEv4(void);
+
+/**
  * @brief Get unicast method status
  * 
  * @return true if unicast method is enabled
  */
 bool get_uni_cast_method(void);
+
+/**
+ * @brief Get number cast auto mode status
+ * 
+ * @return 0 = manual mode, 1 = auto mode
+ */
+bool get_number_cast_auto(void);
+
+/* ================== Resource Accessor Functions ================== */
+/* Used by silabs_ext_scr_svc.c as function pointers in resource arrays */
+
+uint8_t sender_id_upper(void);     /**< High byte of sender ID */
+uint8_t sender_id_lower(void);     /**< Low byte of sender ID */
+
+uint8_t node_id_upper(void);       /**< High byte of node device address */
+uint8_t node_id_lower(void);       /**< Low byte of node device address */
+
+uint8_t numcst_src_id_upper(void); /**< High byte of numcast source node ID */
+uint8_t numcst_src_id_lower(void); /**< Low byte of numcast source node ID */
+
+int8_t numcst_rssi_lower(void);    /**< Numcast RSSI lower bound */
+int8_t numcst_rssi_upper(void);    /**< Numcast RSSI upper bound */
+int8_t numcst_rssi_average(void);  /**< Numcast RSSI average */
+
+/* ================== Configuration Toggle Functions ================== */
+
+bool chg_cfg_phy2m(void);
+bool chg_cfg_phy1m(void);
+bool chg_cfg_phy8s(void);
+bool chg_cfg_phyBLEv4(void);
+bool chg_cfg_ANONYMOUS(void);
+void chg_uni_cast_method(void);
+int chg_soc_dcdc(void);
+bool chg_number_cast_auto(void);
+int8_t rcv_state_progress(uint8_t idx);
+int16_t numcst_setval(uint8_t field, int16_t setval);
+int16_t numcst_rxval(uint8_t field);
+
+/* ================== RC Protocol Functions (stubs) ================== */
+/* bt_addr_le_t is defined in silabs_nordic_compat.h */
+bool rc_msg_outgoing(void *msg_p, size_t sz);
+bool rc_rush_msg_outgoing(void *msg_p, size_t sz);
+bool rm_msg_outgoing(void *msg_p, size_t sz);
+bool rm_rush_msg_outgoing(void *msg_p, size_t sz);
+bool set_rc_party(bt_addr_le_t *addr_p);
+void clr_rc_party(void);
+bool chk_rc_party(void *ptr);
+
+/* ================== Advertising Interval Accessor Functions ================== */
+uint16_t adv_interval_lower(uint8_t idx);
+uint16_t adv_interval_upper(uint8_t idx);
+uint16_t enum_totalnum(int8_t dir);
+int8_t   sender_txpower(void);
+
+/* ================== Channel Configuration Toggle Functions ================== */
+bool chg_cfg_ch37(void);
+bool chg_cfg_ch38(void);
+bool chg_cfg_ch39(void);
+
+/* ================== TX/RX Ratio Accessor Functions ================== */
+uint16_t xmt_ratio_lower(int idx);
+uint16_t xmt_ratio_upper(int idx);
+uint16_t rcv_ratio_lower(int idx);
+uint16_t rcv_ratio_upper(int idx);
+
+/* ================== RX/Envmon RSSI Accessor Functions ================== */
+int8_t rcv_rssi_lower(int idx);
+int8_t rcv_rssi_upper(int idx);
+int8_t rcv_rssi_average(int idx);
+int8_t envmon_rssi_lower(int idx);
+int8_t envmon_rssi_upper(int idx);
+int8_t envmon_rssi_average(int idx);
+
+/* ================== Statistics Accessor Functions ================== */
+uint32_t env_stats_val(int idx);
+uint32_t rcv_stats_val(int idx);
+
+/* ================== State Mark Functions ================== */
+uint8_t snd_state_mark(int idx);
+uint8_t rcv_state_mark(int idx);
+bool numcast_phy_mark(uint8_t idx);
 
 /* ================== Utility Functions ================== */
 
