@@ -147,7 +147,7 @@ static const char __attribute__((used)) msgInterval_10[]={"3000~3600 TGAP(adv_sl
 
 #define PRINT_USINT_SCENE_CTX 0
 #define PRINT_SUITABLE_BUF_SZ 0
-#define PRINT_RESOURCE_ALLOC_INFO 1
+#define PRINT_RESOURCE_ALLOC_INFO 0
 #define CHK_ENQ_RESOURCE 0
 #define CHK_GET_VALUE 0
 #define CHK_MSG_IN_STEP 0
@@ -186,6 +186,14 @@ static void evt_hdl_chg_scene(void);
 static void evt_hdl_task_trigger(void);
 static void evt_hdl_pseudo_escape(void);
 // RESOURCE_CONTEXT_BEGIN
+/* Fix __COUNTER__ baseline for RLST_IDX values.
+ * RLST_ID0 hardcodes res_idx=0 without consuming __COUNTER__.
+ * _rlst_base captures __COUNTER__ at this exact point; every subsequent
+ * RLST_CTOR_STP2 produces __COUNTER__ - _rlst_base, giving sequential
+ * values 1, 2, 3... matching the sorted ordinals in resource_sort[]. */
+enum { _rlst_base = __COUNTER__ };
+#undef  RLST_STP3
+#define RLST_STP3(arg_nm) enum { arg_nm = (__COUNTER__ - _rlst_base) };
 static const char itemPRJNM[]={"LossTst"};
 RLST_ID0(RESOURCE_xST,RTYP_IDX_CHARSTR,itemPRJNM,scr_resource);
 
@@ -3084,7 +3092,7 @@ static void ext_scrio(void * p1, void * p2, void * p3)
 	int rcv_ch;
 	int esc_code;
 	int64_t uptime_64_barrier=k_uptime_get();
-	int64_t elapsed;
+	int64_t elapsed=0;
 	const char init_ext_scr1[]={CFRAME_0 "\f"};
 	const char init_ext_scr2[]={CFRAME_1 CSInfo_CUP(2,6) "LossTst\n Module Power-Up"};
 	resource_sort_num=((ptrdiff_t)STRUCT_SECTION_END(scr_resource)-(ptrdiff_t)STRUCT_SECTION_START(scr_resource))/sizeof(RESOURCE_xST);

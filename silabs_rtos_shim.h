@@ -267,10 +267,18 @@ static inline int32_t k_sleep(k_timeout_t timeout)
     return 0;
 }
 
-/** Yield the CPU to the next ready thread. */
+/** Yield the CPU to the next ready thread.
+ *
+ * IMPORTANT: osThreadYield() maps to OSSchedRoundRobinYield() which requires
+ * OS_CFG_SCHED_ROUND_ROBIN_EN == DEF_ENABLED.  In this project it is disabled,
+ * so calling osThreadYield() hits RTOS_ASSERT_CRITICAL and faults the kernel.
+ * OSSched() is a private MicriumOS symbol not declared in any public header.
+ * Use osDelay(1) instead — it yields for one tick (1 ms) and is safe
+ * regardless of round-robin configuration.
+ */
 static inline void k_yield(void)
 {
-    osThreadYield();
+    osDelay(1);
 }
 
 /**

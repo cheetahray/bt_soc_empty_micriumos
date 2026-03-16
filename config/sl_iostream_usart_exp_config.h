@@ -52,7 +52,7 @@
 // <usartStopbits1p5=> 1.5 stop bits
 // <usartStopbits2=> 2 stop bits
 // <i> Default: usartStopbits1
-#define SL_IOSTREAM_USART_EXP_STOP_BITS             usartStopbits1
+#define SL_IOSTREAM_USART_EXP_STOP_BITS             usartStopbits2
 
 // <o SL_IOSTREAM_USART_EXP_FLOW_CONTROL_TYPE> Flow control
 // <usartHwFlowControlNone=> None

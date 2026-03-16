@@ -107,6 +107,12 @@ void spec_uart_shim_init(void)
      * before osKernelStart(). Double-init corrupts the iostream state and silently
      * breaks VCOM. Just mark as initialized and let the SDK handle it. */
 
+    /* When an RTOS kernel is present, sl_iostream_uart defaults to BLOCKING read
+     * mode: sl_iostream_getchar() will wait indefinitely for a byte.  We need
+     * non-blocking behaviour so spec_uart_getc() returns -1 immediately when
+     * the RX buffer is empty. */
+    sl_iostream_uart_set_read_block(sl_iostream_uart_exp_handle, false);
+
     s_last_rx_tick = 0;
     s_last_tx_tick = 0;
     s_initialized  = true;
@@ -178,12 +184,9 @@ int spec_uart_getc(void)
 {
     uint8_t byte;
 
-    /*
-     * Configure non-blocking read on first call (lazy, one-time).
-     * The application owns stream initialisation; we only set the
-     * read timeout to 0 so getchar() returns SL_STATUS_WOULD_BLOCK
-     * immediately when the RX buffer is empty.
-     */
+    /* Non-blocking: sl_iostream_uart_set_read_block(..., false) was called in
+     * spec_uart_shim_init(), so sl_iostream_getchar() returns
+     * SL_STATUS_WOULD_BLOCK immediately when the RX buffer is empty. */
     sl_status_t status = sl_iostream_getchar(sl_iostream_exp_handle,
                                              (char *)&byte);
     if (status != SL_STATUS_OK) {
