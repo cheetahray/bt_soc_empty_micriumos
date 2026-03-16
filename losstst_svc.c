@@ -8,7 +8,6 @@
 
 #include "losstst_svc.h"
 #include "ble_log.h"
-#include "lcd_ui.h"
 #include <string.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -2060,7 +2059,6 @@ int scanner_setup(const test_param_t *param)
     }
     
     /* Update LCD display */
-    lcd_ui_update(param, "Scanner", "Ready");
     
     return 0;
 }
@@ -2146,7 +2144,6 @@ int numcast_setup(const test_param_t *param)
     number_cast_auto = false;
     
     /* Update LCD display */
-    lcd_ui_update(param, "NumCast", "Ready");
     
     return 0;
 }
@@ -2178,7 +2175,6 @@ int envmon_setup(const test_param_t *param)
     }
     
     /* Update LCD display */
-    lcd_ui_update(param, "EnvMon", "Ready");
     
     DEBUG_PRINT("=== EnvMon Setup: Complete ===\n");
     

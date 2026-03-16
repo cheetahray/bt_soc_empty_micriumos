@@ -615,33 +615,3 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
   app_proceed();
 }
 
-/**************************************************************************//**
- * Button callback handler.
- * This is called in INTERRUPT CONTEXT - keep it fast!
- * Do NOT call LCD functions directly - use event flags instead.
- *****************************************************************************/
-void sl_button_on_change(const sl_button_t *handle)
-{
-  // Button 0: Expand current item / Select sub-option
-  if (handle == &sl_button_btn0) {
-    if (sl_button_get_state(handle) == SL_SIMPLE_BUTTON_PRESSED) {
-      // Set flag for processing in task context
-      if (button_event_flags != NULL) {
-        osEventFlagsSet(button_event_flags, BTN0_PRESSED_FLAG);
-        app_proceed();
-      }
-    }
-  }
-  
-  // Button 1: Navigate to next item (in main menu or sub-menu)
-  if (handle == &sl_button_btn1) {
-    if (sl_button_get_state(handle) == SL_SIMPLE_BUTTON_PRESSED) {
-      // Set flag for processing in task context
-      if (button_event_flags != NULL) {
-        osEventFlagsSet(button_event_flags, BTN1_PRESSED_FLAG);
-        app_proceed();
-      }
-    }
-  }
-}
-
