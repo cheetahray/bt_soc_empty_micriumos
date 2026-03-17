@@ -91,12 +91,12 @@
 #define SL_IOSTREAM_USART_EXP_PERIPHERAL_NO      0
 #endif
 
-// USART0 TX on PB00
+// USART0 TX on PA08
 #ifndef SL_IOSTREAM_USART_EXP_TX_PORT           
-#define SL_IOSTREAM_USART_EXP_TX_PORT            SL_GPIO_PORT_B
+#define SL_IOSTREAM_USART_EXP_TX_PORT            SL_GPIO_PORT_A
 #endif
 #ifndef SL_IOSTREAM_USART_EXP_TX_PIN            
-#define SL_IOSTREAM_USART_EXP_TX_PIN             0
+#define SL_IOSTREAM_USART_EXP_TX_PIN             8
 #endif
 
 // USART0 RX on PB01
