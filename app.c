@@ -299,7 +299,7 @@ void app_process_action(void)
             task_SENDER = true;
             task_SCANNER = false;
             task_NUMCAST = false;
-            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
+            load_parm_cfg();  // 讀取最新的 cfg_phy_sel[] 等 LCD 設定
             task_delay = false;
         }
         else if (scanner_task_tgr(0)) {
@@ -307,7 +307,7 @@ void app_process_action(void)
             task_SENDER = false;
             task_SCANNER = true;
             task_NUMCAST = false;
-            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
+            load_parm_cfg();  // 讀取最新的 cfg_phy_sel[] 等 LCD 設定
             task_delay = false;
         }
         else if (numcst_task_tgr(0)) {
@@ -315,7 +315,7 @@ void app_process_action(void)
             task_SENDER = false;
             task_SCANNER = false;
             task_NUMCAST = true;
-            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
+            load_parm_cfg();  // 讀取最新的 cfg_phy_sel[] 等 LCD 設定
             task_delay = false;
         }
         else if (envmon_task_tgr(0)) {
@@ -323,7 +323,7 @@ void app_process_action(void)
             task_SENDER = false;
             task_SCANNER = false;
             task_NUMCAST = false;
-            // 不调用 load_parm_cfg()，保留用户在 LCD 上的设置
+            load_parm_cfg();  // 讀取最新的 cfg_phy_sel[] 等 LCD 設定
             task_delay = false;
         }
         else {

@@ -515,6 +515,12 @@ static int16_t precnt_rcv[4];
  * a unique, decrementing pre_cnt value — required by the receiver's loss count. */
 static int16_t burst_remaining[4] = {0, 0, 0, 0};
 static bool    burst_active[4]    = {false, false, false, false};
+/* Deferred burst restart: after each event the sender task waits interval_min
+ * ms before re-arming.  The SiLabs controller fires the first event of any new
+ * advertiser_start immediately (ignoring interval_min), so we must impose the
+ * spacing ourselves in software. */
+static volatile bool    burst_restart_pending[4] = {false, false, false, false};
+static volatile int64_t burst_next_start_tm[4]   = {0, 0, 0, 0};
 static rssi_stamp_t env_rssi_rec[4][256];
 
 typedef bool (*envmon_task_abort)(void);
@@ -958,30 +964,20 @@ static int platform_create_adv_set(const adv_param_t *param,
             stored_adv_params[adv_index].interval_max = interval_max;
         }
         
-        /* Set advertising duration based on num_events parameter */
+        /* Set advertising timing based on start parameters */
         if (param != NULL && param->num_events > 0) {
-            /* Calculate duration: num_events * max_interval (stored params) */
-            /* Duration is in units of 10ms, interval is in 0.625ms units */
+            /* Use max_events so the controller fires exactly N events then stops.
+             * duration=0 means no time-based limit — avoids the race where the
+             * duration expires before the first event fires (especially on Coded PHY
+             * where the interval can equal the duration). */
             if (adv_index < MAX_ADV_SETS) {
-                uint32_t max_interval_ms = (interval_max * 625) / 1000;
-                uint32_t duration_10ms = (param->num_events * max_interval_ms) / 10;
-                
-                /* Limit duration to max 16-bit value (655.35 seconds) */
-                if (duration_10ms > 0xFFFF) {
-                    duration_10ms = 0xFFFF;
-                }
-                
-                /* Set advertiser timing with duration */
                 status = sl_bt_advertiser_set_timing(
                     handle,
                     interval_min,
                     interval_max,
-                    (uint16_t)duration_10ms,  /* Duration in 10ms units */
-                    0  /* Max events = 0 (use duration instead) */
+                    0,                          /* duration=0: rely on max_events */
+                    (uint8_t)param->num_events  /* fire exactly this many events */
                 );
-                
-                if (status != SL_STATUS_OK) {
-                }
             }
         } else if (param != NULL && param->timeout > 0) {
             /* Use timeout parameter (in units of 10ms) */
@@ -1632,7 +1628,6 @@ int sender_setup(const test_param_t *param)
     
     /* Print task startup banner */
     printf("Packet Loss Test (node %03u) **** SND SIDE ****\n", (unsigned char)device_address[0]);
-    
     /* Generate initial status message */
     sender_peek_msg();
     
@@ -1655,14 +1650,14 @@ int sender_setup(const test_param_t *param)
     /* Start advertising on selected PHYs with modified parameters if needed */
     /* PHY index mapping: 0=2M, 1=1M, 2=Coded(S8), 3=BLE4 */
     if (param->phy_2m) {
+        const adv_param_t *base_param_0 = non_connectable_adv_param_x[round_adv_param_index][0];
         if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
-            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][0];
-            adv_param_t work_adv_param = *base_param;
+            adv_param_t work_adv_param = *base_param_0;
             work_adv_param.options |= adv_param_mask[1];
             work_adv_param.options &= ~adv_param_mask[0];
             err = update_adv(0, &work_adv_param, NULL, NULL);
         } else {
-            err = update_adv(0, NULL, NULL, NULL);
+            err = update_adv(0, base_param_0, NULL, NULL);
         }
         if (err) {
         } else {
@@ -1672,14 +1667,14 @@ int sender_setup(const test_param_t *param)
     }
     
     if (param->phy_1m) {
+        const adv_param_t *base_param_1 = non_connectable_adv_param_x[round_adv_param_index][1];
         if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
-            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][1];
-            adv_param_t work_adv_param = *base_param;
+            adv_param_t work_adv_param = *base_param_1;
             work_adv_param.options |= adv_param_mask[1];
             work_adv_param.options &= ~adv_param_mask[0];
             err = update_adv(1, &work_adv_param, NULL, NULL);
         } else {
-            err = update_adv(1, NULL, NULL, NULL);
+            err = update_adv(1, base_param_1, NULL, NULL);
         }
         if (err) {
         } else {
@@ -1689,14 +1684,14 @@ int sender_setup(const test_param_t *param)
     }
     
     if (param->phy_s8) {
+        const adv_param_t *base_param_2 = non_connectable_adv_param_x[round_adv_param_index][2];
         if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
-            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][2];
-            adv_param_t work_adv_param = *base_param;
+            adv_param_t work_adv_param = *base_param_2;
             work_adv_param.options |= adv_param_mask[1];
             work_adv_param.options &= ~adv_param_mask[0];
             err = update_adv(2, &work_adv_param, NULL, NULL);
         } else {
-            err = update_adv(2, NULL, NULL, NULL);
+            err = update_adv(2, base_param_2, NULL, NULL);
         }
         if (err) {
         } else {
@@ -1706,14 +1701,14 @@ int sender_setup(const test_param_t *param)
     }
     
     if (param->phy_ble4) {
+        const adv_param_t *base_param_3 = non_connectable_adv_param_x[round_adv_param_index][3];
         if (adv_param_mask[0] != 0 || adv_param_mask[1] != 0) {
-            const adv_param_t *base_param = non_connectable_adv_param_x[round_adv_param_index][3];
-            adv_param_t work_adv_param = *base_param;
+            adv_param_t work_adv_param = *base_param_3;
             work_adv_param.options |= adv_param_mask[1];
             work_adv_param.options &= ~adv_param_mask[0];
             err = update_adv(3, &work_adv_param, NULL, NULL);
         } else {
-            err = update_adv(3, NULL, NULL, NULL);
+            err = update_adv(3, base_param_3, NULL, NULL);
         }
         if (err) {
         } else {
@@ -2393,6 +2388,7 @@ void losstst_adv_sent_handler(adv_handle_t adv_handle)
             /* Abort requested — stop chaining; fall through to abort handler */
             burst_active[index] = false;
             burst_remaining[index] = 0;
+            burst_restart_pending[index] = false;
         } else {
             burst_remaining[index]--;
             device_info_form[index].pre_cnt = (int16_t)burst_remaining[index];
@@ -2400,9 +2396,17 @@ void losstst_adv_sent_handler(adv_handle_t adv_handle)
                 device_info_bt4_form.device_info = device_info_form[3];
             }
             if (burst_remaining[index] > 0) {
-                /* Restart for the next burst event with updated pre_cnt */
-                update_adv(index, NULL, ratio_test_data_set[index], p_adv_1event_start_param);
-                return;  /* update_adv cleared stop=0; sender wait loop continues */
+                /* Schedule next event: the sender wait-loop calls update_adv() after
+                 * interval_min ms.  Calling update_adv() here would fire the next
+                 * event immediately (~18 ms) because the SiLabs controller starts
+                 * the first event of a new advertiser_start without waiting for
+                 * interval_min to elapse — the configured interval only applies
+                 * between consecutive events during continuous advertising. */
+                burst_next_start_tm[index] = platform_uptime_get()
+                                             + (int64_t)value_interval[round_adv_param_index][0];
+                burst_restart_pending[index] = true;
+                /* Leave stop=1; sender loop sees burst_restart_pending and stays alive */
+                return;
             } else {
                 /* All events fired; pre_cnt==0 signals burst end to receiver.
                  * stop=1 already set above — sender task moves to post-burst. */
@@ -2635,6 +2639,7 @@ int losstst_sender(void)
                 device_info_form[idx].pre_cnt = LOSS_TEST_BURST_COUNT;
                 burst_remaining[idx] = LOSS_TEST_BURST_COUNT;
                 burst_active[idx] = true;
+                burst_restart_pending[idx] = false;
             }
             if (idx == 3) {
                 device_info_bt4_form.device_info = device_info_form[3];
@@ -2680,12 +2685,21 @@ int losstst_sender(void)
         uptime_64_barrier += period_msec;
         pitch_msec = 1000 + platform_uptime_get();
         
-        while (((lc_phy_sel[0] && !ext_adv_status[0].stop)
-                || (lc_phy_sel[1] && !ext_adv_status[1].stop)
-                || (lc_phy_sel[2] && !ext_adv_status[2].stop)
-                || (lc_phy_sel[3] && !ext_adv_status[3].stop))
+        while (((lc_phy_sel[0] && (!ext_adv_status[0].stop || burst_restart_pending[0]))
+                || (lc_phy_sel[1] && (!ext_adv_status[1].stop || burst_restart_pending[1]))
+                || (lc_phy_sel[2] && (!ext_adv_status[2].stop || burst_restart_pending[2]))
+                || (lc_phy_sel[3] && (!ext_adv_status[3].stop || burst_restart_pending[3])))
             && (uptime_64_barrier > (period_msec = platform_uptime_get()))) {
-            
+
+            /* Deferred burst restart: re-arm any PHY whose interval_min has elapsed */
+            for (int idx = 0; idx < 4; idx++) {
+                if (lc_phy_sel[idx] && burst_restart_pending[idx]
+                    && platform_uptime_get() >= burst_next_start_tm[idx]) {
+                    burst_restart_pending[idx] = false;
+                    update_adv(idx, NULL, ratio_test_data_set[idx], p_adv_1event_start_param);
+                }
+            }
+
             if (platform_can_yield()) {
                 platform_yield();
             }
@@ -2696,9 +2710,6 @@ int losstst_sender(void)
                     break;
                 }
             }
-            
-            /* Periodic debug log (pre_cnt is updated per-event in the adv_sent callback;
-             * do NOT overwrite it here or the same value would span multiple events). */
         }
         
         if (abort) {
