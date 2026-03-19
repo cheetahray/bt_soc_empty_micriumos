@@ -368,11 +368,13 @@ void app_process_action(void)
             return;
         }
         else if (task_ENVMON) {
+            DEBUG_PRINT("[APP] task_ENVMON setup: envmon_tgr=%d\n", envmon_task_tgr(0));
             blocking_adv(0);
             blocking_adv(1);
             blocking_adv(2);
             blocking_adv(3);
-            envmon_setup(&round_test_parm);
+            int envmon_setup_err = envmon_setup(&round_test_parm);
+            DEBUG_PRINT("[APP] envmon_setup returned %d\n", envmon_setup_err);
             is_re_sche(true);
             return;
         }
@@ -382,7 +384,7 @@ void app_process_action(void)
         uptime_barrier_ms = sl_sleeptimer_get_tick_count() + 1000;
         
         do {
-            sl_sleeptimer_delay_millisecond(10);
+            osDelay(10);  /* proper RTOS sleep — yields CPU to other tasks */
             re_sche = is_re_sche(false);
             if (re_sche) break;
         } while (sl_sleeptimer_get_tick_count() < uptime_barrier_ms);
@@ -413,7 +415,7 @@ void app_process_action(void)
         }
         
         do {
-            sl_sleeptimer_delay_millisecond(10);
+            osDelay(10);  /* proper RTOS sleep — yields CPU to other tasks */
             re_sche = is_re_sche(false);
             if (re_sche) break;
         } while (sl_sleeptimer_get_tick_count() < uptime_barrier_ms);
@@ -430,6 +432,8 @@ void app_process_action(void)
     if (task_ENVMON) {
         int err = losstst_envmon();
         if (err <= 0) {
+            DEBUG_PRINT("[APP] task_ENVMON exec done: err=%d envmon_tgr=%d\n",
+                        err, envmon_task_tgr(0));
             task_ENVMON = false;
             envmon_task_tgr(-envmon_task_tgr(0));
         }

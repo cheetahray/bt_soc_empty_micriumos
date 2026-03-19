@@ -22,6 +22,7 @@
  #define RESLST_CTOR_wiSYMSTR
 #include "silabs_ext_scr_csi.h"
 #include "losstst_svc.h"
+#include "app.h"
 #include "ui_resource_code.h"
 
 extern int spec_uart_write(void * buf_p, size_t len);
@@ -76,7 +77,7 @@ static const struct scene_handler_st scene_procedure[];
 static int8_t chk_scene_procedure_size(void);
 
 static struct k_thread ext_scrio_thread;
-K_THREAD_STACK_DEFINE(ext_scrio_thread_stack,1024);
+K_THREAD_STACK_DEFINE(ext_scrio_thread_stack,3072);
 static void ext_scrio(void * p1, void * p2, void * p3);
 
 static int csi_parm[8];
@@ -1298,9 +1299,11 @@ static bool ext_scr_attach(bool reply_da_arrive)
 
 			scr_attach_tm-=SCR_POLL_INTERVAL;
 			lc=0;
+			{
 				if(5<losscnt++) losscnt-=1, supvsr=false;
 			}
 		}
+	}
 
 	return supvsr;
 }
@@ -1427,7 +1430,7 @@ static uint8_t ext_scene_idx_num(uint16_t target_typ)
 static void ext_scr_scene_num(void)
 {
 	int8_t(*trigger)(int8_t)=scene_procedure[scene_sel].trigger;
-	if(0==trigger(0)) trigger(1);
+	if(0==trigger(0)) { trigger(1); app_proceed(); }
 
 	ext_scr_render_uniform_title(RSRC_FIXED_CSTR(itemNUM_task), RSRC_FIXED_CSTR(infoEMPTYSTR));
 
@@ -1534,7 +1537,7 @@ static bool ext_scr_btn_hd_scene_num(int btn_evt)
 		{
 		case 1:
 		case 12:
-			if(NULL!=trigger && 0!=trigger(0)) trigger(-trigger(0));
+			if(NULL!=trigger && 0!=trigger(0)) { trigger(-trigger(0)); app_proceed(); }
 			ext_scr_chg_scene();
 			resp=true;
 			break;
@@ -1699,7 +1702,9 @@ static uint8_t ext_scene_idx_env(uint16_t target_typ)
 static void ext_scr_scene_env(void)
 {
 	int8_t(*trigger)(int8_t)=scene_procedure[scene_sel].trigger;
-	if(0==trigger(0)) trigger(1);
+	if(0==trigger(0)) {
+		trigger(1); app_proceed();
+	}
 
 	ext_scr_render_uniform_title(RSRC_FIXED_CSTR(itemENV_task), RSRC_ENUM_CSTR(res_UniCast_BANNER));
 
@@ -1798,7 +1803,9 @@ static bool ext_scr_btn_hd_scene_env(int btn_evt)
 		{
 		case 1:
 		case 12:
-			if(NULL!=trigger && 0!=trigger(0)) trigger(-trigger(0));
+			if(NULL!=trigger && 0!=trigger(0)) {
+				trigger(-trigger(0)); app_proceed();
+			}
 			ext_scr_chg_scene();
 			resp=true;
 			break;
@@ -3032,10 +3039,9 @@ static bool ext_scr_task_btn_hold(int btn_evt)
 	else if(BTN_IS_RELEASE(btn_evt)) {
 		switch(BTN_IDX(btn_evt)) {
 		case 12:
-			if(NULL!=trigger && 0!=trigger(0)) {;} else
 			if(task_btn_tgr && 2>task_btn_tgr) {
 				task_btn_tgr=0;
-				ext_scr_chg_scene();
+				if(NULL==trigger || 0==trigger(0)) ext_scr_chg_scene();
 			}
 			resp=true;
 			break;
@@ -3047,8 +3053,9 @@ static bool ext_scr_task_btn_hold(int btn_evt)
 			if(task_btn_tgr) {
 				if(3==task_btn_tgr++) {
 					task_btn_tgr=0;
-					if(NULL==trigger ||(NULL!=trigger && 0==trigger(0))) trigger(1);
-					else if(0!=trigger(0)) trigger(-trigger(0));
+					int tgr_state=(NULL!=trigger)?trigger(0):0;
+					if(NULL==trigger ||(NULL!=trigger && 0==tgr_state)) { trigger(1); app_proceed(); }
+					else if(0!=tgr_state) { trigger(-tgr_state); app_proceed(); }
 				}
 			}
 			resp=true;
@@ -3159,16 +3166,31 @@ static void ext_scrio(void * p1, void * p2, void * p3)
 //	TOGGLE_SIG1();
 	
 	while(1){
-		
 		if(k_can_yield()) k_yield();
 
 		bool scr_det=ext_scr_attach(false);
 		if(scr_det!=ext_scr_online) {
 			ext_scr_online=scr_det;
-			printf("LN%u ext_scr %s\n",__LINE__,(ext_scr_online)?"ON-LINE":"OFF-LINE");
 		}
 
 		if(!ext_scr_online){}
+
+		{
+			static int8_t stamp;
+			static int64_t render_tm;
+			bool scene_changed=(stamp!=scene_sel)||ext_scr_clrscr;
+			int64_t now=k_uptime_get();
+			bool render_due=(100<(now-render_tm));
+			if(scene_changed || render_due) {
+				if(scene_changed) {
+					ext_scr_clrscr=false;
+					spec_uart_write((char *)msgCLRSCR,strlen(msgCLRSCR));
+				}
+				stamp=scene_sel;
+				render_tm=now;
+				scene_procedure[scene_sel].scr_procedure();
+			}
+		}
 
 		if(0>(rcv_ch=spec_uart_getc())) {
 			elapsed+=k_uptime_delta(&uptime_64_barrier);
@@ -3189,7 +3211,6 @@ static void ext_scrio(void * p1, void * p2, void * p3)
 		if(0<=(esc_code=esc_code_process(rcv_ch))) {
 			if(0==esc_code) {;}
 			else if(CSI_CPR==esc_code) {
-				// printf("ACTIVE POSITION REPORT ROW_%d COL%d\n",csi_parm[0],csi_parm[1]);
 				scr_attach_tm=SCR_POLL_INTERVAL-SCR_POLL_WAITING;
 			}
 			else if(CSI_DA==esc_code) {
@@ -3200,12 +3221,10 @@ static void ext_scrio(void * p1, void * p2, void * p3)
 			}
 			else if(CSI_PRIVATE_X74==esc_code) {
 				if(8==csi_parm[0]) {
-					// printf("Report_Terminal_Size ROW_%d COL%d\n",csi_parm[1],csi_parm[2]);
 					scr_attach_tm=SCR_POLL_INTERVAL-SCR_POLL_WAITING;
 				}
 			}
 			else if(CSI_PRIVATE_X7E==esc_code) {
-				// printf("button event %d %c\n",csi_parm[0]-29,csi_parm[1]);
 				scr_attach_tm=SCR_POLL_INTERVAL-SCR_POLL_WAITING;
 				int btn_val=0;
 				if('+'==(char)csi_parm[1]) btn_val=0x100;
@@ -3359,24 +3378,15 @@ static void evt_hdl_cfg_interval(void)
 
 static void evt_hdl_chg_scene(void)
 {
-	if(0!=((1==sender_task_status()) | (1==scanner_task_status()))) {}
-	else {
 	int8_t(*trigger)(int8_t)=scene_procedure[scene_sel].trigger;
 	switch(scene_sel) {
 		case 3:
 		case 4:
-				if(NULL==trigger ||(NULL!=trigger && 0==trigger(0))) ext_scr_chg_scene();
+			if(NULL==trigger || 0==trigger(0)) ext_scr_chg_scene();
 			break;
 		default:
-				if(NULL!=trigger && 0!=trigger(0)) trigger(-trigger(0));
+			if(NULL!=trigger && 0!=trigger(0)) { trigger(-trigger(0)); app_proceed(); }
 			ext_scr_chg_scene();
-				if(LOSS_TEST_REMOTE_CTRL_TERM_ACT==party_typ_id && 1==scene_sel) ext_scr_chg_scene();
-				if(3!=scene_sel && 4!=scene_sel) {
-					if(NULL==(trigger=scene_procedure[scene_sel].trigger)) {}
-					else if(0==trigger(0)) trigger(1);
-				}
-		}
-		
 	}
 }
 
@@ -3385,8 +3395,8 @@ static void evt_hdl_task_trigger(void)
 	if(3!=scene_sel && 4!=scene_sel) return;
 	int8_t(*trigger)(int8_t)=scene_procedure[scene_sel].trigger;
 	if(NULL==trigger) return;
-	if(0==trigger(0)) trigger(1);
-	else if(0!=trigger(0)) trigger(-trigger(0));
+	if(0==trigger(0)) { trigger(1); app_proceed(); }
+	else if(0!=trigger(0)) { trigger(-trigger(0)); app_proceed(); }
 }
 
 void dump_to_stdout(void * src_p, size_t src_sz)

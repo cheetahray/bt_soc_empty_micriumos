@@ -2270,9 +2270,14 @@ int ble_test_init(bool auto_start_scan, bool auto_start_adv)
 
 static int8_t losstst_task_tgr(int8_t set,int8_t TGR_VAL)
 {
+	int8_t prev_val = losstst_task_val;
 	if(TGR_VAL!=losstst_task_val && 0==set) return 0;
 	if(0==losstst_task_val && 0<set) losstst_task_val=TGR_VAL;
 	else if(TGR_VAL==losstst_task_val && -TGR_VAL==set) losstst_task_val=0;
+	if (prev_val != losstst_task_val) {
+		DEBUG_PRINT("[TASK_TGR] tgr_id=%d set=%d: task_val %d->%d\n",
+		            TGR_VAL, set, prev_val, losstst_task_val);
+	}
 	return losstst_task_val;
 }
 static int8_t losstst_task_status(int8_t TGR_VAL)
@@ -3078,7 +3083,16 @@ int losstst_sender(void)
             device_info_bt4_form.device_info = device_info_form[3];
             update_adv(3, NULL, ratio_test_data_set[3], p_adv_default_start_param);
         }
-        
+
+        /* All selected PHYs done? Release task lock now so user can navigate
+         * while the finit advertisement (~1s) propagates to the receiver. */
+        if ((!lc_phy_sel[0] || sub_total_snd_2m >= round_total_num)
+            && (!lc_phy_sel[1] || sub_total_snd_1m >= round_total_num)
+            && (!lc_phy_sel[2] || sub_total_snd_s8 >= round_total_num)
+            && (!lc_phy_sel[3] || sub_total_snd_ble4 >= round_total_num)) {
+            sender_task_tgr(-sender_task_tgr(0));
+        }
+
         /* Wait 500ms + 500ms with abort check on second half */
         uptime_64_barrier = 500 + platform_uptime_get();
         while (uptime_64_barrier > platform_uptime_get()) {
