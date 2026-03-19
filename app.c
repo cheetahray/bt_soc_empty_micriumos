@@ -66,7 +66,7 @@ extern void extscr_init(void);
 
 /* Scan RX verbose log switch: 1=on, 0=off */
 #ifndef SCAN_RX_VERBOSE_LOG
-#define SCAN_RX_VERBOSE_LOG 1
+#define SCAN_RX_VERBOSE_LOG 0
 #endif
 
 #if SCAN_RX_VERBOSE_LOG
@@ -77,7 +77,7 @@ extern void extscr_init(void);
 
 /* Optional scan log target address filter (printed order: addr[5]:...:addr[0]) */
 #ifndef SCAN_LOG_TARGET_FILTER
-#define SCAN_LOG_TARGET_FILTER 1
+#define SCAN_LOG_TARGET_FILTER 0
 #endif
 
 #define SCAN_LOG_TARGET_ADDR_5 0xC3
@@ -138,8 +138,6 @@ static int is_re_sche(int update)
 {
     int result = 0;
     static int16_t extscr_tgr_stamp = 0;
-    static int16_t last_logged_stamp = -1;
-    static int16_t last_logged_tgr_val = -1;
     
     /* Get maximum of all task triggers */
     int16_t tgr_val = sender_task_tgr(0);
@@ -155,9 +153,6 @@ static int is_re_sche(int update)
         last_logged_stamp = extscr_tgr_stamp;
         last_logged_tgr_val = tgr_val;
     }
-#else
-    (void)last_logged_stamp;
-    (void)last_logged_tgr_val;
 #endif
 
     if (extscr_tgr_stamp == 0 && tgr_val != 0) {
@@ -339,11 +334,6 @@ void app_process_action(void)
         }
         
         /* ========== Task Setup Phase ========== */
-        if (task_SCANNER || task_SENDER || task_NUMCAST || task_ENVMON) {
-            // Range test 使用 advertising sets 0-4
-            // Connection advertising (set 5) 继续运行，允许 BLE log 访问
-            // Silicon Labs BLE stack 支持多个 advertising sets 同时运行
-        }
         if (task_SCANNER) {
             blocking_adv(0);
             blocking_adv(1);
@@ -368,13 +358,11 @@ void app_process_action(void)
             return;
         }
         else if (task_ENVMON) {
-            DEBUG_PRINT("[APP] task_ENVMON setup: envmon_tgr=%d\n", envmon_task_tgr(0));
             blocking_adv(0);
             blocking_adv(1);
             blocking_adv(2);
             blocking_adv(3);
-            int envmon_setup_err = envmon_setup(&round_test_parm);
-            DEBUG_PRINT("[APP] envmon_setup returned %d\n", envmon_setup_err);
+            envmon_setup(&round_test_parm);
             is_re_sche(true);
             return;
         }
@@ -432,8 +420,6 @@ void app_process_action(void)
     if (task_ENVMON) {
         int err = losstst_envmon();
         if (err <= 0) {
-            DEBUG_PRINT("[APP] task_ENVMON exec done: err=%d envmon_tgr=%d\n",
-                        err, envmon_task_tgr(0));
             task_ENVMON = false;
             envmon_task_tgr(-envmon_task_tgr(0));
         }
@@ -559,7 +545,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         }
         /* Heartbeat: only for our test packets (man=0xFFFF form=0xBAAB) */
         bool is_test_pkt = losstst_check_form_id(scan_evt->data.data, scan_evt->data.len);
-        if (is_test_pkt && (legacy_scan_evt_count <= 3 || (legacy_scan_evt_count % 500U) == 0U)) {
+        if (log_this && is_test_pkt && (legacy_scan_evt_count <= 3 || (legacy_scan_evt_count % 500U) == 0U)) {
             DEBUG_PRINT("[SCAN_EVT][LEGACY] total=%lu rssi=%d len=%u addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
                         (unsigned long)legacy_scan_evt_count,
                         scan_evt->rssi,

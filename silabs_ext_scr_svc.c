@@ -77,7 +77,7 @@ static const struct scene_handler_st scene_procedure[];
 static int8_t chk_scene_procedure_size(void);
 
 static struct k_thread ext_scrio_thread;
-K_THREAD_STACK_DEFINE(ext_scrio_thread_stack,3072);
+K_THREAD_STACK_DEFINE(ext_scrio_thread_stack,2048);
 static void ext_scrio(void * p1, void * p2, void * p3);
 
 static int csi_parm[8];
