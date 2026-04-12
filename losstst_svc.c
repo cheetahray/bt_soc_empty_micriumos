@@ -314,7 +314,7 @@ static bool round_phy_sel[4]={true,false,false,false};
 static bool sndr_abort_flag[4]={false,false,false,false};
 static bool cfg_phy_sel[4]={true,false,false,false};
 static bool cfg_inhibit_ch37, cfg_inhibit_ch38, cfg_inhibit_ch39;
-static bool cfg_non_ANONYMOUS;
+static bool cfg_non_ANONYMOUS = true;
 static int8_t cfg_interval_sel_idx;
 static int8_t cfg_totalnum_sel_idx;
 static bool uni_cast_method;
@@ -396,6 +396,9 @@ static const adv_start_param_t p_adv_5sec_start_param[]=BT_LE_EXT_ADV_START_PARA
 static const adv_start_param_t p_adv_burst_start_param[]=BT_LE_EXT_ADV_START_PARAM(0,LOSS_TEST_BURST_COUNT);
 static const adv_start_param_t p_adv_1event_start_param[]=BT_LE_EXT_ADV_START_PARAM(0,1);
 
+/* Forward declarations */
+static void init_adv_set_addresses(void);
+
 const int8_t sender_tgr=1;
 const int8_t scanner_tgr=2;
 const int8_t numcst_tgr=3;
@@ -426,6 +429,11 @@ typedef struct {
 
 /* Device names for each advertising set */
 static char adv_dev_nm[MAX_ADV_SETS][MAX_DEVICE_NAME_LEN + 1];
+
+/* Per-adv-set random static addresses (mirrors Nordic bt_id_create).
+ * Index 0 = device identity (no random address); 1..MAX_ADV_SETS-1 = unique derived addresses. */
+static bd_addr adv_set_rand_addr[MAX_ADV_SETS];
+static bool    adv_set_rand_addr_init = false;
 
 /* Stored advertising parameters for each set (needed for start with options) */
 static adv_param_t stored_adv_params[MAX_ADV_SETS];
@@ -815,7 +823,21 @@ static int platform_create_adv_set(const adv_param_t *param,
         if (status != SL_STATUS_OK) {
             return -EIO;
         }
-        
+
+        // Step 1b: Assign a unique random static address for all test sets 0..MAX_ADV_SETS-1.
+        // This mirrors Nordic's per-identity (bt_id_create) mechanism so each set
+        // advertises from a distinct MAC address instead of the shared device identity.
+        if (param->id < MAX_ADV_SETS) {
+            init_adv_set_addresses();
+            bd_addr actual_addr;
+            /* addr_type 1 = static random address */
+            sl_status_t addr_st = sl_bt_advertiser_set_random_address(*handle, 1,
+                                                adv_set_rand_addr[param->id],
+                                                &actual_addr);
+            //DEBUG_BLE_PRINT("[ADV] set_rand_addr[%d] st=0x%lx\n",
+            //                (int)param->id, (unsigned long)addr_st);
+        }
+
         // Step 2: Set timing (interval)
         status = sl_bt_advertiser_set_timing(*handle, 
                                              param->interval_min,
@@ -847,9 +869,13 @@ static int platform_create_adv_set(const adv_param_t *param,
             // Note: Flags (anonymous, tx_power) will be applied when starting advertising
             
         } else if (use_legacy_adv) {
-            // Legacy (BT4) advertising - no PHY setting needed
-            // Clear any random address to use identity address
-            sl_bt_advertiser_clear_random_address(*handle);
+            // Legacy (BT4) advertising - no PHY setting needed.
+            if (param->id == 0) {
+                // Set 0 uses the device identity address (same as Nordic id=0).
+                sl_bt_advertiser_clear_random_address(*handle);
+            }
+            // Sets 1..MAX_ADV_SETS-1 already have their unique random static
+            // address assigned in Step 1b above; nothing more to do here.
         }
         
         // Note: TX power should be set using set_adv_tx_power() function if needed
@@ -926,6 +952,8 @@ static int platform_create_adv_set(const adv_param_t *param,
             status = sl_bt_legacy_advertiser_set_data(handle, 0, offset, adv_data);
         } else {
             status = sl_bt_extended_advertiser_set_data(handle, offset, adv_data);
+            //DEBUG_BLE_PRINT("[ADV] set_data: handle=%u offset=%u st=0x%lx\n",
+            //            (unsigned)handle, (unsigned)offset, (unsigned long)status);
         }
         return (status == SL_STATUS_OK) ? 0 : -EIO;
 
@@ -1006,6 +1034,9 @@ static int platform_create_adv_set(const adv_param_t *param,
             status = sl_bt_extended_advertiser_start(handle,
                                                      connection_mode,
                                                      sl_flags);
+            //DEBUG_BLE_PRINT("[ADV] ext_start: h=%u mode=%u flags=0x%x st=0x%lx\n",
+            //                (unsigned)handle, (unsigned)connection_mode,
+            //                (unsigned)sl_flags, (unsigned long)status);
         } else {
             // Legacy advertising
             uint8_t connection_mode = is_connectable ?
@@ -1060,6 +1091,33 @@ int losstst_svc_init(const uint8_t *device_addr)
 /**
  * @brief Internal helper to initialize device names
  */
+/**
+ * @brief Initialise per-advertising-set random static addresses.
+ *
+ * Mirrors Nordic's bt_id_create(NULL, NULL) loop: each advertising set
+ * 1..MAX_ADV_SETS-1 gets a unique random static address derived from the
+ * device identity address, so a scanner sees a distinct MAC per non-anonymous
+ * advertising slot.  Must be called after ble_test_init() which populates
+ * device_address[].
+ */
+static void init_adv_set_addresses(void)
+{
+    if (adv_set_rand_addr_init) {
+        return;
+    }
+    for (int i = 0; i < MAX_ADV_SETS; i++) {
+        /* Use identity address as base, then increment byte [4] (second MSB)
+         * by i+1 so every test set has a unique address AND none collide with
+         * the device identity address (offset=0) used by the connectable set. */
+        memcpy(adv_set_rand_addr[i].addr, device_address, 6);
+        adv_set_rand_addr[i].addr[4] = (uint8_t)(device_address[4] + (uint8_t)(i + 1));
+        /* BT Core Spec 6, Vol 6 Part B §1.3.2:
+         * bits [47:46] MUST be 11b for a valid random static address. */
+        adv_set_rand_addr[i].addr[5] |= 0xC0u;
+    }
+    adv_set_rand_addr_init = true;
+}
+
 static void init_device_names(void)
 {
     if (adv_dev_nm[0][0] != '\0') {
@@ -1210,6 +1268,9 @@ int update_adv(uint8_t index,
     
     /* Initialize device names on first use */
     init_device_names();
+    /* Always ensure ratio_test_data_set[index] is populated so callers
+     * that pass it as adv_data (e.g. losstst_sender) get valid AD content. */
+    prepare_default_adv_data(index);
     
     /* ========== Create advertising set if needed ========== */
     if (!ext_adv_status[index].initialized) {

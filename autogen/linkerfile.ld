@@ -121,8 +121,11 @@ SECTIONS
 
     *(.rodata*)
     *(.eh_frame*)
+  } > FLASH
 
-    /* scr_resource iterable section for silabs_ext_scr_svc (sections-silabs.ld) */
+  /* scr_resource iterable section — required by silabs_ext_scr_svc.c */
+  ._iterable_type_scr_resource_list : ALIGN(4)
+  {
     _iterable_type_scr_resource_list_start = .;
     KEEP(*(SORT_BY_NAME(._iterable_type_scr_resource_list*)));
     _iterable_type_scr_resource_list_end = .;
