@@ -1143,10 +1143,10 @@ static void init_device_names(void)
                             ? gatt_device_name 
                             : "Turnkey LossTest";
     
-    snprintf(adv_dev_nm[0], sizeof(adv_dev_nm[0]), "LossTst(%03u)", node_id);
-    snprintf(adv_dev_nm[1], sizeof(adv_dev_nm[1]), "LossTst(%03u)", node_id);
-    snprintf(adv_dev_nm[2], sizeof(adv_dev_nm[2]), "LossTst(%03u)", node_id);
-    snprintf(adv_dev_nm[3], sizeof(adv_dev_nm[3]), "LossTst%03u", node_id);
+    snprintf(adv_dev_nm[0], sizeof(adv_dev_nm[0]), "LossTst(%03u)2M", node_id);
+    snprintf(adv_dev_nm[1], sizeof(adv_dev_nm[1]), "LossTst(%03u)1M", node_id);
+    snprintf(adv_dev_nm[2], sizeof(adv_dev_nm[2]), "LossTst(%03u)S8", node_id);
+    snprintf(adv_dev_nm[3], sizeof(adv_dev_nm[3]), "LossTst(%03u)v4", node_id);
     /* Limit base_name to 19 chars to fit "(PEEK 999)" in 31-byte buffer */
     snprintf(adv_dev_nm[4], sizeof(adv_dev_nm[4]), "%.19s(PEEK %03u)", base_name, node_id);
     
