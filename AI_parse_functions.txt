@@ -1,0 +1,51 @@
+Sender 模块 (2177-2551行):
+
+✅ losstst_sender() - 主发送循环
+✅ sender_setup() - 发送器设置
+✅ sender_finit() - 发送完成处理
+✅ sender_peek_msg() - 状态消息生成
+✅ blocking_adv() - 广播停止
+Scanner 模块 (2558-2848行):
+
+✅ losstst_scanner() - 主扫描循环（250行完整实现）
+✅ tst_form_packet_rcv() - 测试包接收处理（220行）
+✅ test_form_parser() - 测试包解析器
+✅ device_found() / device_found_legacy/extended() - 扫描回调
+Numcast 模块 (2849-3157行):
+
+✅ losstst_numcast() - Number cast循环
+✅ numcast_parser() - Numcast解析器
+✅ numcast_packet_evt() - Numcast事件处理
+✅ numcst_rssi_calc() - RSSI计算
+Environment Monitor (2961-3017行):
+
+✅ losstst_envmon() - 环境监测循环
+✅ env_rssi_calc() - 环境RSSI计算
+RSSI工具 (3162-3178行):
+
+✅ rssi_avg_procedure() - RSSI平均值计算
+✅ rssi_idx_init() - RSSI索引初始化
+平台适配 (1563-1927行):
+
+✅ sl_bt_data_parse() - BLE TLV数据解析器
+✅ platform_start/stop_scan() - 扫描抽象层
+✅ platform_start/stop_adv() - 广播抽象层
+✅ get_adv_channel_map() - 信道映射
+初始化 (1929-2094行):
+
+✅ ble_test_init() - 核心BLE初始化
+✅ my_app_init() - 应用层初始化
+
+✅ resp_burst_end_data[] 初始化
+✅ remote_ctrl_data[] 初始化
+
+✅ losstst_init() - 完整系统初始化
+
+passive_scan_method
+passive_scan_control
+update_adv
+losstst_adv_send_cb
+
+幫我比較兩邊的 resp_burst_end_data 初始化的部分, 有沒有不一樣的流程
+
+adv_owner_flag
